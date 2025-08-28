@@ -1,0 +1,445 @@
+{
+  "system": {
+    "name": "Advanced AI Trading System",
+    "version": "4.0.0-CapitalSmart",
+    "mode": "production",
+    "description": "Capital-aware AI trading with order role intelligence"
+  },
+  
+  "trading": {
+    "symbol": "XAUUSD.v",
+    "timeframe": "M5",
+    "market_orders_only": true,
+    "signal_cooldown_seconds": 45,
+    "max_signals_per_hour": 50,
+    "max_positions": 60,
+    "auto_trading": true,
+    "high_frequency_mode": true
+  },
+
+  "capital_management": {
+    "_comment": "🆕 CAPITAL-BASED PORTFOLIO MANAGEMENT",
+    
+    "initial_capital": 7500.0,
+    "max_drawdown_percent": 30.0,
+    "conservative_trigger": 20.0,
+    "emergency_trigger": 25.0,
+    
+    "capital_zones": {
+      "safe_zone_percent": 50.0,
+      "growth_zone_percent": 35.0, 
+      "aggressive_zone_percent": 15.0
+    },
+    
+    "zone_risk_limits": {
+      "safe": {
+        "max_risk_per_trade": 0.5,
+        "max_total_risk": 5.0,
+        "max_positions": 25,
+        "base_lot": 0.01,
+        "max_lot": 0.05
+      },
+      "growth": {
+        "max_risk_per_trade": 1.0,
+        "max_total_risk": 10.0,
+        "max_positions": 25,
+        "base_lot": 0.02,
+        "max_lot": 0.10
+      },
+      "aggressive": {
+        "max_risk_per_trade": 2.0,
+        "max_total_risk": 15.0,
+        "max_positions": 10,
+        "base_lot": 0.03,
+        "max_lot": 0.20
+      }
+    },
+    
+    "trading_mode_adjustments": {
+      "normal": {"lot_multiplier": 1.0, "risk_multiplier": 1.0},
+      "conservative": {"lot_multiplier": 0.6, "risk_multiplier": 0.7},
+      "emergency": {"lot_multiplier": 0.3, "risk_multiplier": 0.5},
+      "recovery": {"lot_multiplier": 1.4, "risk_multiplier": 1.2}
+    },
+    
+    "recovery_boost_enabled": true,
+    "progressive_scaling": true
+  },
+
+  "order_roles": {
+    "_comment": "🆕 ORDER ROLE INTELLIGENCE SYSTEM",
+    
+    "auto_assignment": true,
+    "role_evolution": true,
+    "portfolio_balancing": true,
+    
+    "role_quotas": {
+      "HG": 25.0,
+      "PW": 40.0,
+      "RH": 20.0,
+      "SC": 15.0
+    },
+    
+    "role_settings": {
+      "HG": {
+        "max_age_hours": 48,
+        "min_profit_threshold": 4.0,
+        "max_loss_tolerance": -60.0,
+        "hedge_priority": 1.0,
+        "lot_multiplier": 0.8
+      },
+      "PW": {
+        "max_age_hours": 24,
+        "min_profit_threshold": 2.5,
+        "max_loss_tolerance": -35.0,
+        "trail_profit": true,
+        "lot_multiplier": 1.0
+      },
+      "RH": {
+        "max_age_hours": 12,
+        "min_profit_threshold": 1.0,
+        "max_loss_tolerance": -25.0,
+        "aggressive_sizing": true,
+        "lot_multiplier": 1.5
+      },
+      "SC": {
+        "max_age_hours": 3,
+        "min_profit_threshold": 0.5,
+        "max_loss_tolerance": -8.0,
+        "quick_profit": true,
+        "lot_multiplier": 1.2
+      }
+    }
+  },
+  
+  "smart_entry_rules": {
+    "_comment": "🔧 RELAXED ENTRY RULES - ไม่เข้มงวดเกินไป",
+    
+    "mini_trend": {
+      "enabled": true,
+      "lookback_candles": 3,
+      "min_trend_candles": 2,
+      "min_body_ratio": 0.03,
+      "ignore_previous_close": false,
+      "trend_strength_weight": 0.35
+    },
+    
+    "portfolio_balance": {
+      "enabled": true,
+      "target_buy_sell_ratio": 0.5,
+      "max_imbalance_ratio": 0.75,
+      "balance_adjustment_factor": 1.3,
+      "rebalance_threshold": 0.70
+    },
+    
+    "dynamic_lot_sizing": {
+      "base_lot": 0.01,
+      "min_lot": 0.01, 
+      "max_lot": 0.25,
+      
+      "signal_strength_factor": {
+        "enabled": true,
+        "min_multiplier": 0.6,
+        "max_multiplier": 3.5,
+        "strength_sensitivity": 1.0
+      },
+      
+      "trend_strength_factor": {  
+        "enabled": true,
+        "weak_trend_multiplier": 0.8,
+        "strong_trend_multiplier": 1.8,
+        "trend_threshold": 0.5
+      },
+      
+      "balance_factor": {
+        "enabled": true,  
+        "imbalance_boost": 1.4,
+        "oversupply_reduction": 0.7
+      },
+      
+      "movement_factor": {
+        "enabled": true,
+        "min_movement_points": 0.15,
+        "max_movement_points": 2.50,
+        "movement_multiplier_max": 1.6
+      },
+      
+      "capital_factor": {
+        "enabled": true,
+        "capital_efficiency_boost": true,
+        "drawdown_reduction": true,
+        "recovery_boost": true
+      },
+      
+      "role_factor": {
+        "enabled": true,
+        "role_multipliers": {
+          "HG": 0.8,
+          "PW": 1.0,
+          "RH": 1.5,
+          "SC": 1.2
+        }
+      }
+    }
+  },
+  
+  "entry_filters": {
+    "_comment": "🔧 RELAXED QUALITY FILTERS",
+    
+    "price_movement_filter": {
+      "enabled": true,
+      "min_price_change_points": 0.15,
+      "max_price_change_points": 6.00,
+      "movement_confirmation": false
+    },
+    
+    "session_activity_filter": {
+      "enabled": true,
+      "low_activity_reduction": 0.5,
+      "high_activity_boost": 1.4,
+      "overlap_boost": 1.6
+    },
+    
+    "volatility_filter": {
+      "enabled": true,
+      "low_volatility_threshold": 0.3,
+      "high_volatility_threshold": 4.0,
+      "volatility_adjustment": true
+    },
+    
+    "capital_zone_filter": {
+      "enabled": true,
+      "safe_zone_conservative": false,
+      "growth_zone_moderate": true,
+      "aggressive_zone_relaxed": true
+    },
+    
+    "role_opportunity_filter": {
+      "enabled": true,
+      "hg_opportunities": true,
+      "recovery_opportunities": true,
+      "scalp_opportunities": true
+    }
+  },
+  
+  "risk_management": {
+    "_comment": "🔧 FLEXIBLE RISK MANAGEMENT",
+    
+    "max_positions": 60,
+    "max_daily_trades": 120,
+    "position_size_limit": 8.0,
+    "margin_safety_level": 250.0,
+    
+    "progressive_limits": {
+      "enabled": true,
+      "normal_mode_multiplier": 1.0,
+      "conservative_mode_multiplier": 0.7,
+      "emergency_mode_multiplier": 0.4,
+      "recovery_mode_multiplier": 1.3
+    },
+    
+    "capital_based_limits": {
+      "enabled": true,
+      "scale_with_capital": true,
+      "min_capital_for_full_risk": 5000.0,
+      "capital_efficiency_threshold": 0.8
+    },
+    
+    "role_based_limits": {
+      "enabled": true,
+      "hg_max_positions": 15,
+      "pw_max_positions": 25,
+      "rh_max_positions": 12,
+      "sc_max_positions": 8
+    }
+  },
+
+  "position_management": {
+    "_comment": "🔧 ENHANCED POSITION MANAGEMENT",
+    
+    "min_efficiency_per_lot": 40.0,
+    "volume_balance_tolerance": 0.35,
+    "partial_close_enabled": true,
+    "min_partial_volume": 0.01,
+    
+    "smart_close_settings": {
+      "max_losing_age_hours": 12,
+      "min_net_profit_to_close": 1.5,
+      "portfolio_balance_threshold": 0.70,
+      
+      "role_based_closing": {
+        "enabled": true,
+        "hg_patience_hours": 48,
+        "pw_patience_hours": 24,
+        "rh_patience_hours": 12,
+        "sc_patience_hours": 3
+      }
+    },
+    
+    "recovery_combinations": {
+      "enabled": true,
+      "max_combination_size": 5,
+      "min_net_profit_for_combo": -8.0,
+      "volume_match_tolerance": 0.25
+    },
+    
+    "profit_taking": {
+      "multi_level_enabled": true,
+      "micro_profits": {"min": 0.5, "max": 2.0},
+      "standard_profits": {"min": 2.0, "max": 8.0},
+      "momentum_profits": {"min": 8.0, "max": 50.0},
+      
+      "dynamic_thresholds": {
+        "enabled": true,
+        "volatility_adjustment": true,
+        "time_based_adjustment": true,
+        "role_based_adjustment": true
+      }
+    }
+  },
+
+  "adaptive_settings": {
+    "_comment": "🆕 ADAPTIVE INTELLIGENCE",
+    
+    "learning_enabled": true,
+    "pattern_recognition": {
+      "enabled": true,
+      "min_sample_size": 20,
+      "confidence_threshold": 0.7,
+      "auto_adjust_weights": true
+    },
+    
+    "market_regime_detection": {
+      "enabled": true,
+      "trending_threshold": 0.6,
+      "ranging_threshold": 0.4,
+      "volatile_threshold": 2.0,
+      "calm_threshold": 0.5
+    },
+    
+    "strategy_morphing": {
+      "enabled": true,
+      "performance_window_hours": 24,
+      "adaptation_sensitivity": 0.3,
+      "rollback_on_failure": true
+    },
+    
+    "performance_feedback": {
+      "enabled": true,
+      "role_performance_tracking": true,
+      "signal_quality_scoring": true,
+      "auto_parameter_tuning": true
+    }
+  },
+
+  "gui_settings": {
+    "_comment": "🔧 ENHANCED GUI CONFIGURATION",
+    
+    "update_interval_seconds": 2,
+    "max_log_lines": 500,
+    "auto_scroll_logs": true,
+    
+    "capital_dashboard": {
+      "enabled": true,
+      "show_zones": true,
+      "show_drawdown_chart": true,
+      "update_frequency": 3
+    },
+    
+    "role_dashboard": {
+      "enabled": true,
+      "show_role_distribution": true,
+      "show_role_performance": true,
+      "show_evolution_history": true
+    },
+    
+    "enhanced_tables": {
+      "show_profit_per_lot": true,
+      "show_role_column": true,
+      "show_efficiency_category": true,
+      "show_close_priority": true,
+      "color_coding": true
+    },
+    
+    "one_click_actions": {
+      "enabled": true,
+      "emergency_close_all": true,
+      "rebalance_portfolio": true,
+      "optimize_margin": true,
+      "harvest_profits": true
+    }
+  },
+
+  "notifications": {
+    "_comment": "📱 SMART NOTIFICATIONS",
+    
+    "capital_alerts": {
+      "enabled": true,
+      "drawdown_warnings": [15.0, 20.0, 25.0],
+      "recovery_notifications": true,
+      "mode_change_alerts": true
+    },
+    
+    "role_alerts": {
+      "enabled": true,
+      "imbalance_warnings": true,
+      "evolution_notifications": false,
+      "performance_alerts": true
+    },
+    
+    "opportunity_alerts": {
+      "enabled": true,
+      "recovery_opportunities": true,
+      "profit_taking_suggestions": true,
+      "hedge_recommendations": true
+    }
+  },
+
+  "logging": {
+    "_comment": "📝 COMPREHENSIVE LOGGING",
+    
+    "log_level": "INFO",
+    "max_log_files": 30,
+    "max_log_size_mb": 50,
+    
+    "component_logging": {
+      "capital_manager": true,
+      "role_manager": true,
+      "signal_generator": true,
+      "position_monitor": true,
+      "risk_manager": true
+    },
+    
+    "performance_logging": {
+      "enabled": true,
+      "log_trades": true,
+      "log_role_changes": true,
+      "log_capital_changes": true,
+      "log_adaptations": true
+    }
+  },
+
+  "backup_and_recovery": {
+    "_comment": "💾 DATA PROTECTION",
+    
+    "auto_backup": true,
+    "backup_interval_hours": 6,
+    "max_backup_files": 20,
+    
+    "critical_data": {
+      "capital_history": true,
+      "position_roles": true,
+      "performance_metrics": true,
+      "adaptation_parameters": true
+    }
+  },
+
+  "experimental_features": {
+    "_comment": "🧪 EXPERIMENTAL (ปิดไว้ก่อน)",
+    
+    "ai_signal_scoring": false,
+    "predictive_analytics": false,
+    "sentiment_analysis": false,
+    "news_integration": false
+  }
+}
