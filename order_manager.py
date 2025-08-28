@@ -1,24 +1,26 @@
 """
-🎭 Order Role Intelligence System v4.0
-order_role_manager.py
+⚡ Central Order Management System v4.0 - CAPITAL + ROLE INTELLIGENCE
+order_manager.py
 
-🚀 NEW FEATURES:
-✅ Auto Role Assignment (HG/PW/RH/SC)
-✅ Role Evolution Logic (dynamic role changes)
-✅ Role-based Action Logic 
-✅ Portfolio Role Balance Management
-✅ Smart Role Recommendations
-✅ Role Performance Analytics
+🚀 NEW FEATURES v4.0:
+✅ Capital-aware Order Execution (check zones before execution)
+✅ Role-based Order Management (HG/PW/RH/SC integration)
+✅ Smart Order Flow (signal → validation → execution → monitoring)
+✅ Advanced Order Coordination (prevent conflicts + optimize timing)
+✅ Intelligent Position Sizing (capital + role + signal strength)
+✅ Complete Integration Hub (connects all trading components)
 
-🎯 ให้ระบบรู้หน้าที่ของแต่ละออเดอร์
-จัดการออเดอร์แต่ละตัวตามบทบาทที่เหมาะสม
+🎯 Central Command Center สำหรับการจัดการออเดอร์ทั้งหมด
+ประสานงานระหว่าง signal_generator, lot_calculator, order_executor, etc.
 """
 
 import MetaTrader5 as mt5
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
-import statistics
+import time
+import json
 from enum import Enum
+import statistics
 
 class OrderRole(Enum):
     """🎭 Order Role Definitions"""
@@ -52,45 +54,45 @@ class OrderRoleManager:
         self.role_evolution = self.role_config.get("role_evolution", True)
         self.portfolio_balancing = self.role_config.get("portfolio_balancing", True)
         
-        # Role quotas (% of total positions)
+        # Role quotas (เป้าหมายสัดส่วน)
         self.role_quotas = self.role_config.get("role_quotas", {
-            "HG": 25.0,  # 25% Hedge Guard
-            "PW": 40.0,  # 40% Profit Walker  
-            "RH": 20.0,  # 20% Recovery Hunter
-            "SC": 15.0   # 15% Scalp Capture
+            "HG": 25.0,  # Hedge Guard 25%
+            "PW": 40.0,  # Profit Walker 40% 
+            "RH": 20.0,  # Recovery Hunter 20%
+            "SC": 15.0   # Scalp Capture 15%
         })
         
-        # Role-specific settings
-        self.role_settings = {
+        # Role settings (การตั้งค่าสำหรับแต่ละ role)
+        self.role_settings = self.role_config.get("role_settings", {
             "HG": {
-                "max_age_hours": 48,        # ค้ำได้นานสุด 48 ชั่วโมง
-                "min_profit_threshold": 5.0, # ปิดเมื่อกำไร $5+
-                "max_loss_tolerance": -50.0, # ทนขาดทุนได้ $50
-                "hedge_priority": 1.0,      # priority สูงสุดในการ hedge
+                "max_age_hours": 48,        # hedge ยาวได้ 48 ชั่วโมง
+                "min_profit_threshold": 4.0, # ปิดเมื่อกำไร $4+
+                "max_loss_tolerance": -60.0, # ทนขาดทุนได้ $60
+                "defensive": True,          # เน้นการป้องกัน
                 "preferred_lot_range": (0.01, 0.05)
             },
             "PW": {
-                "max_age_hours": 24,        # เดินตามกำไรนาน 24 ชั่วโมง
-                "min_profit_threshold": 3.0, # ปิดเมื่อกำไร $3+ 
-                "max_loss_tolerance": -30.0, # ทนขาดทุนได้ $30
-                "trail_profit": True,       # ใช้ trailing profit
+                "max_age_hours": 24,        # profit walker 24 ชั่วโมง
+                "min_profit_threshold": 2.5, # ปิดเมื่อกำไร $2.5+
+                "max_loss_tolerance": -35.0, # ทนขาดทุนได้ $35
+                "profit_trailing": True,    # เดินตามกำไร
                 "preferred_lot_range": (0.01, 0.10)
             },
             "RH": {
-                "max_age_hours": 12,        # recovery เร็ว 12 ชั่วโมง
+                "max_age_hours": 12,        # recovery 12 ชั่วโมง
                 "min_profit_threshold": 1.0, # ปิดเมื่อกำไร $1+
-                "max_loss_tolerance": -20.0, # ทนขาดทุนได้ $20
-                "aggressive_sizing": True,  # ใช้ lot size ใหญ่กว่า
-                "preferred_lot_range": (0.02, 0.20)
+                "max_loss_tolerance": -25.0, # ทนขาดทุนได้ $25
+                "recovery_focused": True,   # เน้นการกู้คืน
+                "preferred_lot_range": (0.01, 0.08)
             },
             "SC": {
                 "max_age_hours": 2,         # scalp เร็ว 2 ชั่วโมง
                 "min_profit_threshold": 0.5, # ปิดเมื่อกำไร $0.5+
-                "max_loss_tolerance": -5.0,  # ทนขาดทุนได้ $5
+                "max_loss_tolerance": -8.0,  # ทนขาดทุนได้ $8
                 "quick_profit": True,       # เก็บกำไรเร็ว
                 "preferred_lot_range": (0.01, 0.15)
             }
-        }
+        })
         
         # Role tracking
         self.position_roles = {}  # {position_id: role_info}
@@ -120,524 +122,197 @@ class OrderRoleManager:
             portfolio_context: บริบท portfolio (drawdown, imbalance, etc.)
             
         Returns:
-            str: Role ที่กำหนด ("HG", "PW", "RH", "SC")
+            str: Role ที่กำหนดให้ (HG/PW/RH/SC)
         """
         try:
             if not self.auto_assignment:
-                return "PW"  # default role
+                return "PW"  # Default เป็น Profit Walker
             
-            # ดึงข้อมูลสำคัญ
-            position_type = position_info.get('type', 'BUY')
-            volume = position_info.get('volume', 0.01)
-            signal_strength = position_info.get('signal_strength', 0.5)
-            capital_zone = position_info.get('capital_zone', 'safe')
+            # ประเมินสถานการณ์ portfolio
+            drawdown_percent = portfolio_context.get('drawdown_percent', 0)
+            trading_mode = portfolio_context.get('trading_mode', 'normal')
+            current_positions = portfolio_context.get('current_positions', 0)
+            signal_strength = portfolio_context.get('signal_strength', 0.5)
             
-            # Portfolio context
-            drawdown = portfolio_context.get('drawdown', 0.0)
-            imbalance_ratio = portfolio_context.get('imbalance_ratio', 0.0)
-            losing_positions = portfolio_context.get('losing_positions', 0)
-            current_roles = portfolio_context.get('current_roles', {})
+            # คำนวณ role distribution ปัจจุบัน
+            current_distribution = self._calculate_current_distribution()
             
-            # คำนวณ role scores
-            role_scores = {}
+            # กฎการกำหนด role
+            assigned_role = self._determine_optimal_role(
+                position_info, portfolio_context, current_distribution
+            )
             
-            # HG (Hedge Guard) Score
-            hg_score = 0.0
-            if drawdown > 15.0:  # drawdown สูง ต้องการ hedge
-                hg_score += 0.4
-            if imbalance_ratio > 0.6:  # portfolio ไม่สมดุล
-                hg_score += 0.3
-            if losing_positions > 10:  # มี positions ติดลบเยอะ
-                hg_score += 0.3
-            if volume <= 0.05:  # lot เล็ก เหมาะสำหรับ hedge
-                hg_score += 0.2
-            
-            # PW (Profit Walker) Score  
-            pw_score = 0.5  # base score สูง (default role)
-            if 0.6 <= signal_strength <= 0.8:  # signal strength ปานกลาง
-                pw_score += 0.3
-            if capital_zone in ['safe', 'growth']:  # zones ปกติ
-                pw_score += 0.2
-            if drawdown < 10.0:  # portfolio สุขภาพดี
-                pw_score += 0.2
-                
-            # RH (Recovery Hunter) Score
-            rh_score = 0.0
-            if drawdown > 20.0:  # ต้องการ recovery
-                rh_score += 0.5
-            if losing_positions > 15:  # positions ติดลบเยอะ
-                rh_score += 0.3
-            if signal_strength > 0.8:  # signal แรง เหมาะสำหรับ recovery
-                rh_score += 0.3
-            if capital_zone == 'aggressive':  # aggressive zone
-                rh_score += 0.2
-                
-            # SC (Scalp Capture) Score
-            sc_score = 0.0
-            if signal_strength > 0.7:  # signal แรง เหมาะสำหรับ scalp
-                sc_score += 0.4
-            if volume <= 0.08:  # lot เล็ก-กลาง เหมาะสำหรับ scalp
-                sc_score += 0.2
-            if drawdown < 5.0:  # portfolio สุขภาพดีมาก
-                sc_score += 0.2
-            if self._is_high_volatility_time():  # เวลาที่ market เคลื่อนไหวเร็ว
-                sc_score += 0.3
-            
-            role_scores = {"HG": hg_score, "PW": pw_score, "RH": rh_score, "SC": sc_score}
-            
-            # ปรับ score ตาม portfolio role balance
-            role_scores = self._adjust_scores_for_balance(role_scores, current_roles)
-            
-            # เลือก role ที่มี score สูงสุด
-            assigned_role = max(role_scores, key=role_scores.get)
-            
-            print(f"🎯 Role assignment for {position_type} {volume:.2f}L:")
-            print(f"   Scores: HG={hg_score:.2f} PW={pw_score:.2f} RH={rh_score:.2f} SC={sc_score:.2f}")
-            print(f"   → Assigned: {assigned_role}")
+            print(f"🎯 Role assigned: {assigned_role} (Signal: {signal_strength:.2f}, Drawdown: {drawdown_percent:.1f}%)")
             
             return assigned_role
             
         except Exception as e:
             print(f"❌ Role assignment error: {e}")
-            return "PW"  # fallback to default
-
-    def _adjust_scores_for_balance(self, role_scores: Dict, current_roles: Dict) -> Dict:
-        """⚖️ ปรับ scores เพื่อรักษาสมดุล portfolio"""
-        try:
-            total_positions = sum(current_roles.values()) + 1  # +1 สำหรับ position ใหม่
-            
-            for role in role_scores:
-                current_count = current_roles.get(role, 0)
-                current_percent = (current_count / total_positions) * 100
-                target_percent = self.role_quotas.get(role, 25.0)
-                
-                # ถ้า role นี้มีน้อยเกินไป ให้ boost score
-                if current_percent < target_percent * 0.8:
-                    role_scores[role] += 0.3
-                # ถ้า role นี้มีมากเกินไป ให้ลด score  
-                elif current_percent > target_percent * 1.2:
-                    role_scores[role] -= 0.3
-                    
-            return role_scores
-            
-        except Exception as e:
-            return role_scores
-
-    def register_new_position(self, position_id: str, position_info: Dict, assigned_role: str):
-        """
-        📝 ลงทะเบียน Position ใหม่พร้อม Role
-        
-        Args:
-            position_id: ID ของ position
-            position_info: ข้อมูล position
-            assigned_role: Role ที่กำหนด
-        """
-        try:
-            self.position_roles[position_id] = {
-                'role': assigned_role,
-                'assigned_time': datetime.now(),
-                'original_role': assigned_role,
-                'evolution_count': 0,
-                'position_info': position_info.copy(),
-                'performance_metrics': {
-                    'max_profit': 0.0,
-                    'max_loss': 0.0,
-                    'role_changes': []
-                }
-            }
-            
-            print(f"📝 Position {position_id} registered as {assigned_role}")
-            
-        except Exception as e:
-            print(f"❌ Position registration error: {e}")
-
-    # ==========================================
-    # 🔄 ROLE EVOLUTION LOGIC  
-    # ==========================================
+            return "PW"  # Default fallback
     
-    def check_role_evolution(self, positions: List[Dict]) -> List[Dict]:
-        """
-        🔄 ตรวจสอบและปรับ Role ตามสถานการณ์
-        
-        Args:
-            positions: รายการ positions ปัจจุบัน
-            
-        Returns:
-            List[Dict]: รายการ role changes ที่แนะนำ
-        """
+    def _determine_optimal_role(self, position_info: Dict, portfolio_context: Dict, current_distribution: Dict) -> str:
+        """🧠 กำหนด Role ที่เหมาะสม"""
         try:
-            if not self.role_evolution:
-                return []
+            drawdown_percent = portfolio_context.get('drawdown_percent', 0)
+            trading_mode = portfolio_context.get('trading_mode', 'normal')
+            signal_strength = portfolio_context.get('signal_strength', 0.5)
             
-            evolution_recommendations = []
-            
-            for pos in positions:
-                position_id = pos.get('id', '')
-                if position_id not in self.position_roles:
-                    continue
-                    
-                current_role = self.position_roles[position_id]['role']
-                current_profit = pos.get('total_pnl', 0.0)
-                age_hours = pos.get('age_hours', 0.0)
-                
-                # ตรวจสอบเงื่อนไข evolution สำหรับแต่ละ role
-                new_role = self._evaluate_role_evolution(position_id, pos, current_role)
-                
-                if new_role and new_role != current_role:
-                    evolution_recommendations.append({
-                        'position_id': position_id,
-                        'from_role': current_role,
-                        'to_role': new_role,
-                        'reason': self._get_evolution_reason(pos, current_role, new_role),
-                        'priority': self._get_evolution_priority(current_role, new_role)
-                    })
-            
-            return evolution_recommendations
-            
-        except Exception as e:
-            print(f"❌ Role evolution check error: {e}")
-            return []
-
-    def _evaluate_role_evolution(self, position_id: str, position_data: Dict, current_role: str) -> Optional[str]:
-        """🧠 ประเมิน Role Evolution สำหรับ Position หนึ่ง"""
-        try:
-            profit = position_data.get('total_pnl', 0.0)
-            age_hours = position_data.get('age_hours', 0.0)
-            volume = position_data.get('volume', 0.01)
-            
-            role_info = self.position_roles[position_id]
-            
-            # กฎการเปลี่ยน role ตามสถานการณ์
-            if current_role == "HG":  # Hedge Guard
-                # HG → PW เมื่อ portfolio ปลอดภัยแล้วและมีกำไร
-                if profit > 3.0 and age_hours > 4:
-                    return "PW"
-                # HG → SC เมื่อมีกำไรน้อยแต่อยากปิดเร็ว
-                elif 0.5 <= profit <= 2.0 and age_hours > 12:
-                    return "SC"
-                    
-            elif current_role == "PW":  # Profit Walker  
-                # PW → SC เมื่อมีกำไรแล้วแต่ไม่เยอะ อยากปิดเร็ว
-                if 1.0 <= profit <= 4.0 and age_hours > 8:
-                    return "SC"
-                # PW → HG เมื่อขาดทุนและต้องการใช้เป็น hedge
-                elif profit < -10.0 and age_hours > 6:
+            # Emergency mode → เน้น Hedge Guard
+            if trading_mode == 'emergency':
+                if current_distribution.get('HG', 0) < self.role_quotas['HG']:
                     return "HG"
-                # PW → RH เมื่อต้องการ recovery aggressive
-                elif profit < -20.0 and volume >= 0.05:
+            
+            # Recovery mode → เน้น Recovery Hunter
+            if trading_mode == 'recovery':
+                if current_distribution.get('RH', 0) < self.role_quotas['RH']:
                     return "RH"
-                    
-            elif current_role == "RH":  # Recovery Hunter
-                # RH → PW เมื่อ recovery สำเร็จแล้ว
-                if profit > 2.0:
-                    return "PW"  
-                # RH → SC เมื่อ recovery เล็กน้อยแต่อยากปิด
-                elif 0.0 <= profit <= 1.5 and age_hours > 4:
-                    return "SC"
-                # RH → HG เมื่อ recovery ไม่สำเร็จ ให้ไปเป็น hedge
-                elif profit < -30.0 and age_hours > 8:
+            
+            # High drawdown → เพิ่ม Hedge Guard
+            if drawdown_percent > 15.0:
+                if current_distribution.get('HG', 0) < self.role_quotas['HG']:
                     return "HG"
-                    
-            elif current_role == "SC":  # Scalp Capture
-                # SC → PW เมื่อกำไรเยอะเกินไป ควร hold ต่อ
-                if profit > 5.0:
+            
+            # Strong signal → Profit Walker หรือ Scalp
+            if signal_strength >= 0.75:
+                if current_distribution.get('PW', 0) < self.role_quotas['PW']:
                     return "PW"
-                # SC → HG เมื่อขาดทุนมาก ให้ไปเป็น hedge
-                elif profit < -8.0:
-                    return "HG"
+                elif current_distribution.get('SC', 0) < self.role_quotas['SC']:
+                    return "SC"
             
-            return None  # ไม่ต้องเปลี่ยน role
+            # Medium signal → Recovery Hunter หรือ Profit Walker
+            if signal_strength >= 0.5:
+                if current_distribution.get('RH', 0) < self.role_quotas['RH']:
+                    return "RH"
+                elif current_distribution.get('PW', 0) < self.role_quotas['PW']:
+                    return "PW"
+            
+            # Default: ใช้ role ที่ขาดที่สุด
+            return self._get_most_needed_role(current_distribution)
             
         except Exception as e:
-            print(f"❌ Role evolution evaluation error: {e}")
-            return None
-
-    def apply_role_evolution(self, position_id: str, new_role: str, reason: str = ""):
-        """
-        🔄 ใช้การเปลี่ยน Role
-        
-        Args:
-            position_id: ID ของ position
-            new_role: Role ใหม่
-            reason: เหตุผลการเปลี่ยน
-        """
+            print(f"❌ Role determination error: {e}")
+            return "PW"
+    
+    def _calculate_current_distribution(self) -> Dict:
+        """📊 คำนวณการกระจาย role ปัจจุบัน"""
         try:
-            if position_id not in self.position_roles:
-                return False
+            if not self.position_roles:
+                return {"HG": 0, "PW": 0, "RH": 0, "SC": 0}
             
-            old_role = self.position_roles[position_id]['role']
+            total_positions = len(self.position_roles)
+            role_counts = {"HG": 0, "PW": 0, "RH": 0, "SC": 0}
             
-            # อัพเดท role
-            self.position_roles[position_id]['role'] = new_role
-            self.position_roles[position_id]['evolution_count'] += 1
+            for position_data in self.position_roles.values():
+                role = position_data.get('role', 'PW')
+                if role in role_counts:
+                    role_counts[role] += 1
             
-            # บันทึกประวัติ
-            evolution_record = {
-                'timestamp': datetime.now(),
-                'position_id': position_id,
-                'from_role': old_role,
-                'to_role': new_role,
-                'reason': reason
-            }
+            # แปลงเป็นเปอร์เซ็นต์
+            role_percentages = {}
+            for role, count in role_counts.items():
+                role_percentages[role] = (count / total_positions * 100) if total_positions > 0 else 0
             
-            self.position_roles[position_id]['performance_metrics']['role_changes'].append(evolution_record)
-            self.role_history.append(evolution_record)
-            
-            print(f"🔄 Role evolution: Position {position_id} {old_role} → {new_role} ({reason})")
-            return True
+            return role_percentages
             
         except Exception as e:
-            print(f"❌ Role evolution application error: {e}")
-            return False
+            print(f"❌ Distribution calculation error: {e}")
+            return {"HG": 0, "PW": 0, "RH": 0, "SC": 0}
+    
+    def _get_most_needed_role(self, current_distribution: Dict) -> str:
+        """🎯 หา Role ที่ต้องการมากที่สุด"""
+        try:
+            max_deficit = 0
+            most_needed_role = "PW"
+            
+            for role, quota in self.role_quotas.items():
+                current_percent = current_distribution.get(role, 0)
+                deficit = quota - current_percent
+                
+                if deficit > max_deficit:
+                    max_deficit = deficit
+                    most_needed_role = role
+            
+            return most_needed_role
+            
+        except Exception as e:
+            print(f"❌ Most needed role calculation error: {e}")
+            return "PW"
 
     # ==========================================
-    # 🎯 ROLE-BASED ACTION LOGIC
+    # 📊 PORTFOLIO ANALYSIS
     # ==========================================
     
-    def get_role_based_action_for_position(self, position_id: str, position_data: Dict) -> Dict:
-        """
-        🎯 ได้รับ Action แนะนำตาม Role
-        
-        Args:
-            position_id: ID ของ position
-            position_data: ข้อมูล position ปัจจุบัน
-            
-        Returns:
-            Dict: Action recommendation
-        """
+    def get_portfolio_role_distribution(self) -> Dict:
+        """📊 ดู Role Distribution ของ Portfolio"""
         try:
-            if position_id not in self.position_roles:
-                return {'action': 'hold', 'reason': 'Unknown role'}
+            current_distribution = self._calculate_current_distribution()
+            total_positions = len(self.position_roles)
             
-            role = self.position_roles[position_id]['role']
-            profit = position_data.get('total_pnl', 0.0)
-            age_hours = position_data.get('age_hours', 0.0)
-            
-            role_settings = self.role_settings.get(role, {})
-            
-            # Action logic แยกตาม role
-            if role == "HG":  # Hedge Guard
-                return self._get_hedge_guard_action(position_data, role_settings)
-            elif role == "PW":  # Profit Walker
-                return self._get_profit_walker_action(position_data, role_settings)
-            elif role == "RH":  # Recovery Hunter  
-                return self._get_recovery_hunter_action(position_data, role_settings)
-            elif role == "SC":  # Scalp Capture
-                return self._get_scalp_capture_action(position_data, role_settings)
-            else:
-                return {'action': 'hold', 'reason': f'Unknown role: {role}'}
-                
-        except Exception as e:
-            print(f"❌ Role-based action error: {e}")
-            return {'action': 'hold', 'reason': 'Error occurred'}
-
-    def _get_hedge_guard_action(self, pos_data: Dict, settings: Dict) -> Dict:
-        """🛡️ Hedge Guard Action Logic"""
-        profit = pos_data.get('total_pnl', 0.0)
-        age_hours = pos_data.get('age_hours', 0.0)
-        
-        if profit >= settings.get('min_profit_threshold', 5.0):
-            return {'action': 'close', 'reason': f'HG profit target reached: ${profit:.2f}', 'priority': 2}
-        elif profit <= settings.get('max_loss_tolerance', -50.0):
-            return {'action': 'close', 'reason': f'HG loss limit hit: ${profit:.2f}', 'priority': 1}
-        elif age_hours >= settings.get('max_age_hours', 48):
-            return {'action': 'close', 'reason': f'HG max age reached: {age_hours:.1f}h', 'priority': 3}
-        else:
-            return {'action': 'hold', 'reason': f'HG protecting portfolio (${profit:.2f})', 'priority': 5}
-
-    def _get_profit_walker_action(self, pos_data: Dict, settings: Dict) -> Dict:
-        """🚶 Profit Walker Action Logic"""
-        profit = pos_data.get('total_pnl', 0.0)
-        age_hours = pos_data.get('age_hours', 0.0)
-        
-        if profit >= settings.get('min_profit_threshold', 3.0):
-            return {'action': 'close', 'reason': f'PW profit target: ${profit:.2f}', 'priority': 2}
-        elif profit <= settings.get('max_loss_tolerance', -30.0):
-            return {'action': 'close', 'reason': f'PW loss limit: ${profit:.2f}', 'priority': 1}
-        elif age_hours >= settings.get('max_age_hours', 24):
-            return {'action': 'close', 'reason': f'PW max age: {age_hours:.1f}h', 'priority': 3}
-        else:
-            return {'action': 'hold', 'reason': f'PW walking for profit (${profit:.2f})', 'priority': 5}
-
-    def _get_recovery_hunter_action(self, pos_data: Dict, settings: Dict) -> Dict:
-        """🏹 Recovery Hunter Action Logic"""  
-        profit = pos_data.get('total_pnl', 0.0)
-        age_hours = pos_data.get('age_hours', 0.0)
-        
-        if profit >= settings.get('min_profit_threshold', 1.0):
-            return {'action': 'close', 'reason': f'RH recovery success: ${profit:.2f}', 'priority': 1}
-        elif profit <= settings.get('max_loss_tolerance', -20.0):
-            return {'action': 'close', 'reason': f'RH loss limit: ${profit:.2f}', 'priority': 2}
-        elif age_hours >= settings.get('max_age_hours', 12):
-            return {'action': 'close', 'reason': f'RH timeout: {age_hours:.1f}h', 'priority': 2}
-        else:
-            return {'action': 'hold', 'reason': f'RH hunting recovery (${profit:.2f})', 'priority': 5}
-
-    def _get_scalp_capture_action(self, pos_data: Dict, settings: Dict) -> Dict:
-        """⚡ Scalp Capture Action Logic"""
-        profit = pos_data.get('total_pnl', 0.0)
-        age_hours = pos_data.get('age_hours', 0.0)
-        
-        if profit >= settings.get('min_profit_threshold', 0.5):
-            return {'action': 'close', 'reason': f'SC quick profit: ${profit:.2f}', 'priority': 1}
-        elif profit <= settings.get('max_loss_tolerance', -5.0):
-            return {'action': 'close', 'reason': f'SC quick cut: ${profit:.2f}', 'priority': 1}
-        elif age_hours >= settings.get('max_age_hours', 2):
-            return {'action': 'close', 'reason': f'SC time up: {age_hours:.1f}h', 'priority': 2}
-        else:
-            return {'action': 'hold', 'reason': f'SC scalping (${profit:.2f})', 'priority': 5}
-
-    # ==========================================
-    # 📊 PORTFOLIO ROLE ANALYTICS
-    # ==========================================
-    
-    def get_portfolio_role_distribution(self, positions: List[Dict]) -> Dict:
-        """📊 การกระจาย Role ใน Portfolio"""
-        try:
-            role_distribution = {"HG": 0, "PW": 0, "RH": 0, "SC": 0, "Unknown": 0}
-            role_profits = {"HG": 0.0, "PW": 0.0, "RH": 0.0, "SC": 0.0, "Unknown": 0.0}
-            role_volumes = {"HG": 0.0, "PW": 0.0, "RH": 0.0, "SC": 0.0, "Unknown": 0.0}
-            
-            for pos in positions:
-                position_id = pos.get('id', '')
-                profit = pos.get('total_pnl', 0.0)
-                volume = pos.get('volume', 0.0)
-                
-                if position_id in self.position_roles:
-                    role = self.position_roles[position_id]['role']
-                else:
-                    role = "Unknown"
-                
-                role_distribution[role] += 1
-                role_profits[role] += profit
-                role_volumes[role] += volume
-            
-            total_positions = len(positions)
-            
-            return {
-                'distribution': role_distribution,
-                'percentages': {role: (count/total_positions)*100 if total_positions > 0 else 0 
-                              for role, count in role_distribution.items()},
-                'profits': role_profits,
-                'volumes': role_volumes,
+            # สร้างรายงาน
+            distribution_report = {
+                'roles': {},
+                'balance_status': 'balanced',
+                'imbalances': [],
+                'recommendations': [],
                 'total_positions': total_positions,
-                'balance_status': self._assess_role_balance(role_distribution, total_positions)
+                'timestamp': datetime.now()
             }
+            
+            # วิเคราะห์แต่ละ role
+            for role in ["HG", "PW", "RH", "SC"]:
+                current_percent = current_distribution.get(role, 0)
+                target_percent = self.role_quotas.get(role, 0)
+                difference = current_percent - target_percent
+                
+                distribution_report['roles'][role] = {
+                    'count': sum(1 for p in self.position_roles.values() if p.get('role') == role),
+                    'percentage': current_percent,
+                    'target_percentage': target_percent,
+                    'difference': difference,
+                    'status': 'balanced' if abs(difference) <= 10 else ('over' if difference > 0 else 'under')
+                }
+                
+                # เพิ่มข้อมูลความไม่สมดุล
+                if abs(difference) > 15:
+                    imbalance_msg = f"Role {role}: {current_percent:.1f}% (Target: {target_percent:.1f}%)"
+                    distribution_report['imbalances'].append(imbalance_msg)
+            
+            # ประเมินสถานะความสมดุล
+            major_imbalances = len([r for r in distribution_report['roles'].values() 
+                                  if abs(r['difference']) > 15])
+            
+            if major_imbalances >= 2:
+                distribution_report['balance_status'] = 'severely_imbalanced'
+            elif major_imbalances == 1:
+                distribution_report['balance_status'] = 'imbalanced'
+            else:
+                distribution_report['balance_status'] = 'balanced'
+            
+            return distribution_report
             
         except Exception as e:
             print(f"❌ Portfolio role distribution error: {e}")
-            return {}
-
-    def _assess_role_balance(self, distribution: Dict, total: int) -> str:
-        """⚖️ ประเมินความสมดุลของ roles"""
+            return {'error': str(e)}
+    
+    def track_new_position(self, position_id: str, role_data: Dict):
+        """📝 ติดตาม Position ใหม่"""
         try:
-            if total == 0:
-                return "empty"
-            
-            imbalance_score = 0.0
-            for role in ["HG", "PW", "RH", "SC"]:
-                current_percent = (distribution.get(role, 0) / total) * 100
-                target_percent = self.role_quotas.get(role, 25.0)
-                deviation = abs(current_percent - target_percent)
-                imbalance_score += deviation
-            
-            if imbalance_score <= 20.0:
-                return "balanced"
-            elif imbalance_score <= 40.0:
-                return "slightly_imbalanced"
-            elif imbalance_score <= 60.0:
-                return "imbalanced"
-            else:
-                return "severely_imbalanced"
-                
-        except Exception as e:
-            return "unknown"
-
-    def get_role_performance_summary(self) -> Dict:
-        """📈 สรุปผลงานแต่ละ Role"""
-        try:
-            return {
-                'performance_by_role': self.role_performance.copy(),
-                'evolution_stats': {
-                    'total_evolutions': len(self.role_history),
-                    'evolutions_today': len([h for h in self.role_history 
-                                           if h['timestamp'].date() == datetime.now().date()]),
-                    'most_common_evolution': self._get_most_common_evolution()
-                },
-                'recommendations': self._generate_role_recommendations()
+            self.position_roles[position_id] = {
+                'role': role_data.get('role', 'PW'),
+                'assigned_time': datetime.now(),
+                'assignment_reason': role_data.get('assignment_reason', ''),
+                'portfolio_context': role_data.get('portfolio_context', {}),
+                'performance_metrics': {
+                    'profit_history': [],
+                    'role_changes': [],
+                    'close_reason': None
+                }
             }
             
-        except Exception as e:
-            return {'error': str(e)}
-
-    def _is_high_volatility_time(self) -> bool:
-        """⚡ ตรวจสอบว่าเป็นช่วงเวลา high volatility หรือไม่"""
-        try:
-            now = datetime.now()
-            hour = now.hour
-            
-            # London session (8-12 GMT+7) หรือ NY session (21-01 GMT+7)
-            return (8 <= hour <= 12) or (21 <= hour <= 23) or (0 <= hour <= 1)
+            print(f"📝 Position {position_id} registered as {role_data.get('role', 'PW')}")
             
         except Exception as e:
-            return False
-
-    def _get_evolution_reason(self, pos_data: Dict, from_role: str, to_role: str) -> str:
-        """📝 สร้างเหตุผลการเปลี่ยน role"""
-        profit = pos_data.get('total_pnl', 0.0)
-        age = pos_data.get('age_hours', 0.0)
-        
-        return f"${profit:.1f} profit, {age:.1f}h age"
-
-    def _get_evolution_priority(self, from_role: str, to_role: str) -> int:
-        """🎯 ความสำคัญของการเปลี่ยน role"""
-        priority_matrix = {
-            ("HG", "PW"): 3,  # ปกติ
-            ("HG", "SC"): 2,  # ค่อนข้างด่วน
-            ("PW", "SC"): 2,  # ค่อนข้างด่วน
-            ("PW", "HG"): 1,  # ด่วน
-            ("RH", "PW"): 2,  # ค่อนข้างด่วน
-            ("RH", "SC"): 1,  # ด่วน
-        }
-        return priority_matrix.get((from_role, to_role), 3)
-
-    def _get_most_common_evolution(self) -> str:
-        """📊 Evolution ที่เกิดขึ้นบ่อยที่สุด"""
-        try:
-            if not self.role_history:
-                return "No evolutions yet"
-            
-            evolutions = [f"{h['from_role']}→{h['to_role']}" for h in self.role_history]
-            from collections import Counter
-            most_common = Counter(evolutions).most_common(1)
-            
-            return most_common[0][0] if most_common else "No pattern"
-            
-        except Exception as e:
-            return "Error calculating"
-
-    def _generate_role_recommendations(self) -> List[str]:
-        """💡 สร้างคำแนะนำเกี่ยวกับ roles"""
-        recommendations = []
-        
-        try:
-            # Role balance recommendations
-            if hasattr(self, 'last_distribution'):
-                balance = self.last_distribution.get('balance_status', '')
-                if balance == "severely_imbalanced":
-                    recommendations.append("🚨 Portfolio roles ไม่สมดุลมาก - ควรปรับสัดส่วน")
-                elif balance == "imbalanced":
-                    recommendations.append("⚠️ Portfolio roles ไม่สมดุล - พิจารณาปรับ")
-            
-            # Performance recommendations
-            for role, perf in self.role_performance.items():
-                if perf['count'] > 10 and perf['success_rate'] < 0.4:
-                    recommendations.append(f"📉 Role {role} performance ต่ำ - ปรับกลยุทธ์")
-            
-            return recommendations
-            
-        except Exception as e:
-            return [f"❌ Recommendation error: {e}"]
+            print(f"❌ Position registration error: {e}")
 
     def cleanup_closed_positions(self, active_position_ids: List[str]):
         """🧹 ล้างข้อมูล positions ที่ปิดแล้ว"""
@@ -655,8 +330,675 @@ class OrderRoleManager:
         except Exception as e:
             print(f"❌ Position cleanup error: {e}")
 
+
+class OrderManager:
+    """
+    ⚡ Central Order Management System v4.0
+    
+    🎯 Central Hub สำหรับการจัดการออเดอร์ทั้งหมด:
+    - Capital Zone Validation
+    - Role Assignment & Management  
+    - Smart Order Execution
+    - Position Coordination
+    - Risk Integration
+    """
+    
+    def __init__(self, mt5_connector, config: Dict):
+        """
+        🔧 เริ่มต้น Central Order Manager v4.0
+        
+        Args:
+            mt5_connector: MT5 connection object
+            config: การตั้งค่าระบบ
+        """
+        self.mt5_connector = mt5_connector
+        self.config = config
+        
+        # Component references (will be set by integration)
+        self.capital_manager = None
+        self.role_manager = None
+        self.lot_calculator = None
+        self.order_executor = None
+        self.risk_manager = None
+        self.signal_generator = None
+        
+        # Order management configuration
+        self.trading_config = config.get("trading", {})
+        self.symbol = self.trading_config.get("symbol", "XAUUSD.v")
+        self.max_positions = self.trading_config.get("max_positions", 60)
+        
+        # Order coordination
+        self.pending_orders = {}  # {signal_id: order_info}
+        self.execution_queue = []  # FIFO queue for orders
+        self.order_history = []   # ประวัติการส่งออเดอร์
+        
+        # Performance tracking
+        self.execution_stats = {
+            'total_orders': 0,
+            'successful_orders': 0,
+            'failed_orders': 0,
+            'blocked_orders': 0,
+            'avg_execution_time_ms': 0.0,
+            'last_execution_time': datetime.min
+        }
+        
+        # Smart coordination features
+        self.order_spacing_seconds = 15  # ห่างระหว่างออเดอร์
+        self.batch_execution_enabled = True
+        self.smart_timing_enabled = True
+        
+        print(f"⚡ Central Order Manager v4.0 initialized")
+        print(f"   Symbol: {self.symbol}")
+        print(f"   Max positions: {self.max_positions}")
+        print(f"   Order spacing: {self.order_spacing_seconds}s")
+
+    # ==========================================
+    # 🔗 COMPONENT INTEGRATION
+    # ==========================================
+    
+    def set_capital_manager(self, capital_manager):
+        """💰 เชื่อมต่อ Capital Manager"""
+        self.capital_manager = capital_manager
+        print("💰 Capital Manager integrated with Order Manager")
+    
+    def set_role_manager(self, role_manager):
+        """🎭 เชื่อมต่อ Role Manager"""
+        self.role_manager = role_manager
+        print("🎭 Role Manager integrated with Order Manager")
+    
+    def set_lot_calculator(self, lot_calculator):
+        """📏 เชื่อมต่อ Lot Calculator"""
+        self.lot_calculator = lot_calculator
+        print("📏 Lot Calculator integrated with Order Manager")
+        
+    def set_order_executor(self, order_executor):
+        """⚡ เชื่อมต่อ Order Executor"""
+        self.order_executor = order_executor
+        print("⚡ Order Executor integrated with Order Manager")
+        
+    def set_risk_manager(self, risk_manager):
+        """🛡️ เชื่อมต่อ Risk Manager"""
+        self.risk_manager = risk_manager
+        print("🛡️ Risk Manager integrated with Order Manager")
+        
+    def set_signal_generator(self, signal_generator):
+        """📊 เชื่อมต่อ Signal Generator"""
+        self.signal_generator = signal_generator
+        print("📊 Signal Generator integrated with Order Manager")
+
+    def get_integration_status(self) -> Dict:
+        """🔗 ตรวจสอบสถานะการเชื่อมต่อทุก components"""
+        return {
+            'capital_manager': '✅' if self.capital_manager else '❌',
+            'role_manager': '✅' if self.role_manager else '❌',
+            'lot_calculator': '✅' if self.lot_calculator else '❌',
+            'order_executor': '✅' if self.order_executor else '❌',
+            'risk_manager': '✅' if self.risk_manager else '❌',
+            'signal_generator': '✅' if self.signal_generator else '❌',
+            'mt5_connector': '✅' if self.mt5_connector and self.mt5_connector.is_connected else '❌',
+            'system_ready': self._is_system_ready()
+        }
+
+    def _is_system_ready(self) -> bool:
+        """✅ ตรวจสอบว่าระบบพร้อมเทรดหรือไม่"""
+        required_components = [
+            self.mt5_connector,
+            self.order_executor,
+            self.lot_calculator
+        ]
+        
+        return all(comp is not None for comp in required_components) and \
+               self.mt5_connector.is_connected
+
+    # ==========================================
+    # 🎯 MAIN ORDER PROCESSING
+    # ==========================================
+    
+    def process_trading_signal(self, signal_data: Dict) -> Optional[Dict]:
+        """
+        🎯 ประมวลผล Trading Signal แบบ Complete Flow
+        
+        ขั้นตอน: Signal → Validation → Role Assignment → Execution → Monitoring
+        
+        Args:
+            signal_data: ข้อมูล signal จาก SignalGenerator
+            
+        Returns:
+            Dict: ผลการประมวลผล + execution result
+        """
+        try:
+            signal_id = signal_data.get('signal_id', f"sig_{int(time.time())}")
+            action = signal_data.get('action', 'WAIT')
+            
+            print(f"🎯 Processing signal {signal_id}: {action}")
+            
+            # ขั้นตอนที่ 1: ตรวจสอบระบบ
+            if not self._is_system_ready():
+                return {
+                    'success': False,
+                    'signal_id': signal_id,
+                    'stage': 'system_check',
+                    'error': 'System components not ready',
+                    'integration_status': self.get_integration_status()
+                }
+            
+            # ขั้นตอนที่ 2: ตรวจสอบ signal validity
+            if action not in ['BUY', 'SELL']:
+                print(f"ℹ️ Signal {signal_id}: No execution needed for {action}")
+                return {
+                    'success': True,
+                    'signal_id': signal_id,
+                    'stage': 'validation',
+                    'action_taken': 'none',
+                    'reason': f'Non-executable action: {action}'
+                }
+            
+            # ขั้นตอนที่ 3: Capital Zone Validation
+            capital_status = self._validate_capital_zone()
+            if not capital_status['can_trade']:
+                print(f"🚫 Signal {signal_id} blocked: {capital_status['reason']}")
+                self.execution_stats['blocked_orders'] += 1
+                return {
+                    'success': False,
+                    'signal_id': signal_id,
+                    'stage': 'capital_validation',
+                    'blocked': True,
+                    'reason': capital_status['reason'],
+                    'capital_info': capital_status
+                }
+            
+            # ขั้นตอนที่ 4: Risk Management Validation
+            risk_approval = self._validate_risk_constraints(signal_data, capital_status)
+            if not risk_approval['approved']:
+                print(f"🛡️ Signal {signal_id} blocked by risk management")
+                self.execution_stats['blocked_orders'] += 1
+                return {
+                    'success': False,
+                    'signal_id': signal_id,
+                    'stage': 'risk_validation',
+                    'blocked': True,
+                    'reason': 'Risk management rejection',
+                    'risk_info': risk_approval
+                }
+            
+            # ขั้นตอนที่ 5: Smart Order Spacing
+            spacing_check = self._check_order_spacing()
+            if not spacing_check['can_execute']:
+                print(f"⏰ Signal {signal_id} delayed for spacing: {spacing_check['wait_seconds']}s")
+                # อาจจะเพิ่มเข้า queue แทนการ block
+                return {
+                    'success': False,
+                    'signal_id': signal_id,
+                    'stage': 'timing_validation',
+                    'delayed': True,
+                    'wait_seconds': spacing_check['wait_seconds']
+                }
+            
+            # ขั้นตอนที่ 6: Calculate Optimal Lot Size
+            lot_info = self._calculate_optimal_lot_size(signal_data, capital_status, risk_approval)
+            if lot_info['lot_size'] <= 0:
+                print(f"📏 Signal {signal_id} blocked: Invalid lot size")
+                return {
+                    'success': False,
+                    'signal_id': signal_id,
+                    'stage': 'lot_calculation',
+                    'error': 'Invalid lot size calculated',
+                    'lot_info': lot_info
+                }
+            
+            # ขั้นตอนที่ 7: Role Assignment (if role manager available)
+            role_info = self._assign_order_role(signal_data, capital_status, lot_info)
+            
+            # ขั้นตอนที่ 8: Execute Order
+            execution_data = {
+                **signal_data,
+                'lot_size': lot_info['lot_size'],
+                'capital_zone': capital_status['current_zone'],
+                'assigned_role': role_info['role'],
+                'risk_level': risk_approval['risk_level']
+            }
+            
+            execution_result = self._execute_order(execution_data)
+            
+            # ขั้นตอนที่ 9: Post-execution Processing
+            if execution_result and execution_result.get('success'):
+                self._handle_successful_execution(signal_id, execution_data, execution_result, role_info)
+                
+                return {
+                    'success': True,
+                    'signal_id': signal_id,
+                    'stage': 'completed',
+                    'execution_result': execution_result,
+                    'order_details': {
+                        'action': action,
+                        'lot_size': lot_info['lot_size'],
+                        'role': role_info['role'],
+                        'capital_zone': capital_status['current_zone'],
+                        'execution_price': execution_result.get('execution_price'),
+                        'order_id': execution_result.get('order_id')
+                    }
+                }
+            else:
+                self._handle_failed_execution(signal_id, execution_data, execution_result)
+                
+                return {
+                    'success': False,
+                    'signal_id': signal_id,
+                    'stage': 'execution',
+                    'error': 'Order execution failed',
+                    'execution_result': execution_result
+                }
+                
+        except Exception as e:
+            print(f"❌ Signal processing error: {e}")
+            return {
+                'success': False,
+                'signal_id': signal_data.get('signal_id', 'unknown'),
+                'stage': 'exception',
+                'error': str(e)
+            }
+
+    # ==========================================
+    # 🔍 VALIDATION METHODS
+    # ==========================================
+    
+    def _validate_capital_zone(self) -> Dict:
+        """💰 ตรวจสอบ Capital Zone + สถานะการเทรด"""
+        try:
+            if not self.capital_manager:
+                return {
+                    'can_trade': True,
+                    'current_zone': 'unknown',
+                    'reason': 'No capital manager - using defaults'
+                }
+            
+            capital_status = self.capital_manager.get_capital_status()
+            trading_mode = capital_status.get('trading_mode', 'normal')
+            
+            # ตรวจสอบสถานะ emergency
+            if trading_mode == 'emergency':
+                return {
+                    'can_trade': False,
+                    'current_zone': capital_status.get('current_zone', 'unknown'),
+                    'reason': 'Emergency trading mode active',
+                    'drawdown_percent': capital_status.get('drawdown_percent', 0)
+                }
+            
+            # ตรวจสอบ zone availability
+            current_zone = capital_status.get('current_zone', 'safe')
+            zone_available = capital_status.get('zones', {}).get(current_zone, {}).get('remaining_capital', 0) > 0
+            
+            if not zone_available:
+                return {
+                    'can_trade': False,
+                    'current_zone': current_zone,
+                    'reason': f'No remaining capital in {current_zone} zone'
+                }
+            
+            return {
+                'can_trade': True,
+                'current_zone': current_zone,
+                'trading_mode': trading_mode,
+                'available_capital': capital_status.get('zones', {}).get(current_zone, {}).get('remaining_capital', 0),
+                'reason': 'Capital validation passed'
+            }
+            
+        except Exception as e:
+            print(f"❌ Capital zone validation error: {e}")
+            return {
+                'can_trade': True,  # Fail-safe: allow trading
+                'current_zone': 'unknown',
+                'reason': f'Validation error: {e}'
+            }
+    
+    def _validate_risk_constraints(self, signal_data: Dict, capital_status: Dict) -> Dict:
+        """🛡️ ตรวจสอบข้อจำกัดความเสี่ยง"""
+        try:
+            if not self.risk_manager:
+                return {
+                    'approved': True,
+                    'risk_level': 'unknown',
+                    'reason': 'No risk manager - using defaults'
+                }
+            
+            # ใช้ enhanced trade validation
+            action = signal_data.get('action', 'BUY').lower()
+            suggested_lot = signal_data.get('suggested_lot_size', 0.01)
+            
+            validation = self.risk_manager.validate_new_trade(
+                order_type=action,
+                volume=suggested_lot,
+                role=None  # จะกำหนดทีหลัง
+            )
+            
+            return {
+                'approved': validation.get('approved', False),
+                'risk_level': validation.get('risk_level', 'medium'),
+                'recommended_volume': validation.get('recommended_volume', suggested_lot),
+                'confidence_score': validation.get('confidence_score', 0.5),
+                'adjustments': validation.get('adjustments', []),
+                'reason': 'Risk manager validation'
+            }
+            
+        except Exception as e:
+            print(f"❌ Risk validation error: {e}")
+            return {
+                'approved': True,  # Fail-safe
+                'risk_level': 'unknown',
+                'reason': f'Validation error: {e}'
+            }
+    
+    def _check_order_spacing(self) -> Dict:
+        """⏰ ตรวจสอบระยะห่างระหว่างออเดอร์"""
+        try:
+            if not self.smart_timing_enabled:
+                return {'can_execute': True, 'wait_seconds': 0}
+            
+            current_time = datetime.now()
+            time_since_last = (current_time - self.execution_stats['last_execution_time']).total_seconds()
+            
+            if time_since_last >= self.order_spacing_seconds:
+                return {'can_execute': True, 'wait_seconds': 0}
+            else:
+                wait_seconds = self.order_spacing_seconds - time_since_last
+                return {'can_execute': False, 'wait_seconds': int(wait_seconds)}
+                
+        except Exception as e:
+            return {'can_execute': True, 'wait_seconds': 0}  # Fail-safe
+
+    # ==========================================
+    # 📏 LOT CALCULATION & ROLE ASSIGNMENT
+    # ==========================================
+    
+    def _calculate_optimal_lot_size(self, signal_data: Dict, capital_status: Dict, risk_approval: Dict) -> Dict:
+        """📏 คำนวณ Lot Size ที่เหมาะสม"""
+        try:
+            if not self.lot_calculator:
+                base_lot = 0.01
+                return {
+                    'lot_size': base_lot,
+                    'method': 'fallback',
+                    'reason': 'No lot calculator available'
+                }
+            
+            # เตรียมข้อมูลสำหรับ lot calculation
+            enhanced_signal_data = {
+                **signal_data,
+                'capital_zone': capital_status.get('current_zone', 'safe'),
+                'trading_mode': capital_status.get('trading_mode', 'normal'),
+                'risk_level': risk_approval.get('risk_level', 'medium'),
+                'recommended_volume': risk_approval.get('recommended_volume')
+            }
+            
+            # คำนวณ lot size
+            calculated_lot = self.lot_calculator.calculate_lot_size(enhanced_signal_data)
+            
+            # ใช้ recommended volume จาก risk manager ถ้ามี
+            if risk_approval.get('recommended_volume'):
+                final_lot = min(calculated_lot, risk_approval['recommended_volume'])
+            else:
+                final_lot = calculated_lot
+            
+            return {
+                'lot_size': final_lot,
+                'calculated_lot': calculated_lot,
+                'risk_adjusted_lot': risk_approval.get('recommended_volume'),
+                'method': 'integrated_calculation',
+                'capital_zone': capital_status.get('current_zone'),
+                'reason': 'Calculated using capital + risk integration'
+            }
+            
+        except Exception as e:
+            print(f"❌ Lot calculation error: {e}")
+            return {
+                'lot_size': 0.01,  # Fallback
+                'method': 'error_fallback',
+                'reason': f'Calculation error: {e}'
+            }
+    
+    def _assign_order_role(self, signal_data: Dict, capital_status: Dict, lot_info: Dict) -> Dict:
+        """🎭 กำหนด Role ให้ออเดอร์"""
+        try:
+            if not self.role_manager:
+                return {
+                    'role': 'PW',  # Default role
+                    'method': 'fallback',
+                    'reason': 'No role manager available'
+                }
+            
+            # เตรียมข้อมูล portfolio context
+            portfolio_context = {
+                'capital_zone': capital_status.get('current_zone', 'safe'),
+                'trading_mode': capital_status.get('trading_mode', 'normal'),
+                'drawdown_percent': capital_status.get('drawdown_percent', 0),
+                'current_positions': len(self._get_current_positions()),
+                'signal_strength': signal_data.get('strength', 0.5)
+            }
+            
+            # เตรียมข้อมูล position info
+            position_info = {
+                'type': signal_data.get('action', 'BUY').lower(),
+                'volume': lot_info['lot_size'],
+                'entry_price': signal_data.get('current_price', 0),
+                'signal_id': signal_data.get('signal_id')
+            }
+            
+            # กำหนด role
+            assigned_role = self.role_manager.assign_role_to_new_position(
+                position_info, 
+                portfolio_context
+            )
+            
+            return {
+                'role': assigned_role,
+                'method': 'intelligent_assignment',
+                'portfolio_context': portfolio_context,
+                'reason': f'Assigned by role manager based on portfolio state'
+            }
+            
+        except Exception as e:
+            print(f"❌ Role assignment error: {e}")
+            return {
+                'role': 'PW',  # Fallback
+                'method': 'error_fallback',
+                'reason': f'Assignment error: {e}'
+            }
+
+    # ==========================================
+    # ⚡ ORDER EXECUTION
+    # ==========================================
+    
+    def _execute_order(self, execution_data: Dict) -> Optional[Dict]:
+        """⚡ ส่งออเดอร์จริง"""
+        try:
+            if not self.order_executor:
+                print(f"❌ No order executor available")
+                return None
+            
+            print(f"⚡ Executing {execution_data.get('action')} order...")
+            print(f"   Lot: {execution_data.get('lot_size')}")
+            print(f"   Role: {execution_data.get('assigned_role')}")
+            print(f"   Zone: {execution_data.get('capital_zone')}")
+            
+            # บันทึกเวลาก่อนส่ง
+            execution_start = time.time()
+            
+            # ส่งออเดอร์ผ่าน order executor
+            result = self.order_executor.execute_signal(execution_data)
+            
+            # คำนวณเวลาการส่ง
+            execution_time = time.time() - execution_start
+            
+            # อัพเดท statistics
+            self.execution_stats['total_orders'] += 1
+            self.execution_stats['last_execution_time'] = datetime.now()
+            
+            # อัพเดท average execution time
+            current_avg = self.execution_stats['avg_execution_time_ms']
+            total_orders = self.execution_stats['total_orders']
+            new_time_ms = execution_time * 1000
+            
+            self.execution_stats['avg_execution_time_ms'] = (
+                (current_avg * (total_orders - 1) + new_time_ms) / total_orders
+            )
+            
+            if result and result.get('success'):
+                self.execution_stats['successful_orders'] += 1
+                print(f"✅ Order executed successfully in {new_time_ms:.1f}ms")
+            else:
+                self.execution_stats['failed_orders'] += 1
+                print(f"❌ Order execution failed")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Order execution error: {e}")
+            self.execution_stats['failed_orders'] += 1
+            return None
+
+    # ==========================================
+    # 📋 POST-EXECUTION PROCESSING
+    # ==========================================
+    
+    def _handle_successful_execution(self, signal_id: str, execution_data: Dict, execution_result: Dict, role_info: Dict):
+        """✅ จัดการหลังส่งออเดอร์สำเร็จ"""
+        try:
+            order_id = execution_result.get('order_id')
+            
+            # บันทึกประวัติ
+            order_record = {
+                'timestamp': datetime.now(),
+                'signal_id': signal_id,
+                'order_id': order_id,
+                'action': execution_data.get('action'),
+                'lot_size': execution_data.get('lot_size'),
+                'execution_price': execution_result.get('execution_price'),
+                'role': role_info.get('role'),
+                'capital_zone': execution_data.get('capital_zone'),
+                'status': 'executed'
+            }
+            
+            self.order_history.append(order_record)
+            
+            # อัพเดท role manager ถ้ามี
+            if self.role_manager and order_id:
+                role_data = {
+                    'role': role_info.get('role'),
+                    'assignment_reason': role_info.get('reason', ''),
+                    'portfolio_context': role_info.get('portfolio_context', {}),
+                    'order_details': order_record
+                }
+                
+                self.role_manager.track_new_position(str(order_id), role_data)
+            
+            # อัพเดท capital manager ถ้ามี
+            if self.capital_manager:
+                used_capital = execution_data.get('lot_size', 0) * 100  # ประมาณการ margin used
+                self.capital_manager.allocate_capital(
+                    execution_data.get('capital_zone', 'safe'),
+                    used_capital
+                )
+            
+            print(f"✅ Post-execution processing completed for order {order_id}")
+            
+        except Exception as e:
+            print(f"❌ Post-execution processing error: {e}")
+    
+    def _handle_failed_execution(self, signal_id: str, execution_data: Dict, execution_result: Dict):
+        """❌ จัดการหลังส่งออเดอร์ไม่สำเร็จ"""
+        try:
+            # บันทึกประวัติความล้มเหลว
+            failure_record = {
+                'timestamp': datetime.now(),
+                'signal_id': signal_id,
+                'action': execution_data.get('action'),
+                'lot_size': execution_data.get('lot_size'),
+                'role': execution_data.get('assigned_role'),
+                'error': execution_result.get('error', 'Unknown error') if execution_result else 'No execution result',
+                'status': 'failed'
+            }
+            
+            self.order_history.append(failure_record)
+            
+            print(f"❌ Failed execution recorded for signal {signal_id}")
+            
+        except Exception as e:
+            print(f"❌ Failed execution processing error: {e}")
+
+    # ==========================================
+    # 📊 MONITORING & UTILITIES
+    # ==========================================
+    
+    def _get_current_positions(self) -> List[Dict]:
+        """📋 ดึงรายการ positions ปัจจุบัน"""
+        try:
+            if not self.mt5_connector or not self.mt5_connector.is_connected:
+                return []
+            
+            positions = mt5.positions_get(symbol=self.symbol)
+            if positions is None:
+                return []
+            
+            return [{'ticket': pos.ticket, 'type': pos.type, 'volume': pos.volume, 
+                    'profit': pos.profit} for pos in positions]
+            
+        except Exception as e:
+            print(f"❌ Get positions error: {e}")
+            return []
+    
+    def get_order_manager_status(self) -> Dict:
+        """📊 สถานะ Order Manager"""
+        try:
+            current_positions = self._get_current_positions()
+            
+            return {
+                'system_ready': self._is_system_ready(),
+                'integration_status': self.get_integration_status(),
+                'current_positions': len(current_positions),
+                'max_positions': self.max_positions,
+                'positions_available': self.max_positions - len(current_positions),
+                'execution_stats': self.execution_stats,
+                'order_history_count': len(self.order_history),
+                'pending_orders': len(self.pending_orders),
+                'last_update': datetime.now()
+            }
+            
+        except Exception as e:
+            return {'error': str(e), 'system_ready': False}
+    
+    def get_recent_order_history(self, limit: int = 10) -> List[Dict]:
+        """📜 ประวัติออเดอร์ล่าสุด"""
+        try:
+            sorted_history = sorted(
+                self.order_history, 
+                key=lambda x: x.get('timestamp', datetime.min), 
+                reverse=True
+            )
+            
+            return sorted_history[:limit]
+            
+        except Exception as e:
+            print(f"❌ Get order history error: {e}")
+            return []
+    
+    def cleanup_old_history(self, max_age_hours: int = 24):
+        """🧹 ล้างประวัติเก่า"""
+        try:
+            cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
+            
+            self.order_history = [
+                order for order in self.order_history
+                if order.get('timestamp', datetime.now()) > cutoff_time
+            ]
+            
+            print(f"🧹 Cleaned order history older than {max_age_hours} hours")
+            
+        except Exception as e:
+            print(f"❌ History cleanup error: {e}")
+
+
 # ==========================================
-# 🔧 HELPER FUNCTIONS
+# 🔧 FACTORY & INTEGRATION FUNCTIONS
 # ==========================================
 
 def create_order_role_manager(config: Dict) -> OrderRoleManager:
@@ -670,10 +1012,172 @@ def create_order_role_manager(config: Dict) -> OrderRoleManager:
         OrderRoleManager: configured instance
     """
     try:
+        # ตรวจสอบ config
+        if not config:
+            print("❌ No configuration provided for OrderRoleManager")
+            return None
+            
+        # สร้าง OrderRoleManager
+        print("🏭 Creating Order Role Manager...")
         role_manager = OrderRoleManager(config)
-        print("🏭 Order Role Manager created successfully")
-        return role_manager
+        
+        # ตรวจสอบว่าสร้างสำเร็จ
+        if role_manager:
+            print("✅ Order Role Manager created successfully")
+            print(f"   Auto assignment: {role_manager.auto_assignment}")
+            print(f"   Role evolution: {role_manager.role_evolution}")
+            print(f"   Portfolio balancing: {role_manager.portfolio_balancing}")
+            return role_manager
+        else:
+            print("❌ Failed to create OrderRoleManager")
+            return None
         
     except Exception as e:
         print(f"❌ Order Role Manager creation error: {e}")
         return None
+
+def create_order_manager(mt5_connector, config: Dict) -> 'OrderManager':
+    """
+    🏭 Factory function สำหรับสร้าง OrderManager (Central)
+    
+    Args:
+        mt5_connector: MT5 connector instance
+        config: การตั้งค่าระบบ
+        
+    Returns:
+        OrderManager: configured instance
+    """
+    try:
+        # ตรวจสอบ parameters
+        if not mt5_connector:
+            print("❌ No MT5 connector provided for OrderManager")
+            return None
+            
+        if not config:
+            print("❌ No configuration provided for OrderManager")
+            return None
+            
+        # สร้าง OrderManager
+        print("🏭 Creating Central Order Manager...")
+        order_manager = OrderManager(mt5_connector, config)
+        
+        # ตรวจสอบว่าสร้างสำเร็จ
+        if order_manager:
+            print("✅ Central Order Manager created successfully")
+            
+            # แสดงข้อมูลการตั้งค่า
+            symbol = config.get("trading", {}).get("symbol", "XAUUSD.v")
+            max_positions = config.get("trading", {}).get("max_positions", 60)
+            
+            print(f"   Symbol: {symbol}")
+            print(f"   Max positions: {max_positions}")
+            print(f"   Smart timing: enabled")
+            print(f"   Batch execution: enabled")
+            
+            return order_manager
+        else:
+            print("❌ Failed to create OrderManager")
+            return None
+        
+    except Exception as e:
+        print(f"❌ Order Manager creation error: {e}")
+        return None
+    
+# เพิ่มฟังก์ชัน factory อื่นๆ ด้วยถ้าต้องการ
+def integrate_order_manager_with_system(order_manager, components: Dict):
+    """
+    🔗 ผูก Order Manager เข้ากับระบบทั้งหมด
+    
+    Args:
+        order_manager: OrderManager instance
+        components: dictionary ของ components ต่างๆ
+    """
+    try:
+        print("🔗 Integrating Order Manager with system components...")
+        
+        # เชื่อมต่อ components ทีละตัว
+        if components.get('capital_manager'):
+            order_manager.set_capital_manager(components['capital_manager'])
+            
+        if components.get('role_manager'):
+            order_manager.set_role_manager(components['role_manager'])
+            
+        if components.get('lot_calculator'):
+            order_manager.set_lot_calculator(components['lot_calculator'])
+            
+        if components.get('order_executor'):
+            order_manager.set_order_executor(components['order_executor'])
+            
+        if components.get('risk_manager'):
+            order_manager.set_risk_manager(components['risk_manager'])
+            
+        if components.get('signal_generator'):
+            order_manager.set_signal_generator(components['signal_generator'])
+        
+        print("✅ Order Manager integration completed")
+        return order_manager.get_integration_status()
+        
+    except Exception as e:
+        print(f"❌ Order Manager integration error: {e}")
+        return None
+
+# ==========================================
+# 🧪 TESTING FUNCTIONS
+# ==========================================
+
+# def test_order_manager():
+#     """🧪 ทดสอบ Order Manager v4.0"""
+#     print("\n🧪 Testing Central Order Manager v4.0...")
+    
+#     # Mock configuration
+#     test_config = {
+#         "trading": {
+#             "symbol": "XAUUSD.v",
+#             "max_positions": 60
+#         },
+#         "capital_management": {
+#             "initial_capital": 7500.0
+#         },
+#         "order_roles": {
+#             "auto_assignment": True
+#         }
+#     }
+    
+#     # Mock connector
+#     class MockConnector:
+#         def __init__(self):
+#             self.is_connected = True
+    
+#     # สร้าง Order Manager
+#     mock_connector = MockConnector()
+#     order_manager = create_order_role_manager(mock_connector, test_config)
+    
+#     # ทดสอบ integration status
+#     print("\n1️⃣ Integration Status:")
+#     status = order_manager.get_integration_status()
+#     for component, status_icon in status.items():
+#         print(f"   {component}: {status_icon}")
+    
+#     # ทดสอบ system readiness
+#     print(f"\n2️⃣ System Ready: {'✅' if order_manager._is_system_ready() else '❌'}")
+    
+#     # ทดสอบ mock signal processing
+#     print(f"\n3️⃣ Mock Signal Processing:")
+#     mock_signal = {
+#         'signal_id': 'test_001',
+#         'action': 'BUY',
+#         'strength': 0.65,
+#         'current_price': 2650.50,
+#         'suggested_lot_size': 0.02
+#     }
+    
+#     result = order_manager.process_trading_signal(mock_signal)
+#     print(f"   Result: {result.get('success')}")
+#     print(f"   Stage: {result.get('stage')}")
+#     print(f"   Reason: {result.get('reason', result.get('error', 'N/A'))}")
+    
+#     print("\n✅ Order Manager v4.0 testing completed!")
+#     print("🚀 Ready for full system integration")
+
+# if __name__ == "__main__":
+#     test_order_manager()

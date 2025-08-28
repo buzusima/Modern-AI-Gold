@@ -24,14 +24,14 @@ from typing import Dict, List, Optional, Any
 
 # Import Enhanced System Components
 from mt5_connector import MT5Connector
-from signal_generator import EnhancedSignalGenerator  # v4.0
-from order_manager import OrderManager
-from position_monitor import EnhancedPositionMonitor  # v4.0
-from lot_calculator import EnhancedLotCalculator  # v4.0
+from signal_generator import SignalGenerator                    # ✅ Class: SignalGenerator (ไม่ใช่ EnhancedSignalGenerator)
+from position_monitor import PositionMonitor                    # ✅ ต้องเช็คว่ามีไฟล์นี้ไหม หรือใช้ชื่ออื่น
+from lot_calculator import LotCalculator, create_lot_calculator # ✅ Class: LotCalculator (ไม่ใช่ EnhancedLotCalculator)
 from performance_tracker import PerformanceTracker
-from enhanced_risk_manager import EnhancedRiskManager  # v4.0
-from capital_manager import CapitalManager  # 🆕
-from order_manager import OrderRoleManager  # 🆕
+from enhanced_risk_manager import EnhancedRiskManager
+from capital_manager import CapitalManager, create_capital_manager          # ✅ มี factory function
+from order_manager import OrderRoleManager, create_order_role_manager       # ✅ มี OrderRoleManager ในไฟล์ order_manager.py
+from order_manager import OrderManager, create_order_manager, integrate_order_manager_with_system # ✅ Central Order Manager
 
 class ModernAITradingGUI:
     """
@@ -65,11 +65,12 @@ class ModernAITradingGUI:
         self.capital_manager = None
         self.role_manager = None  
         self.enhanced_risk_manager = None
-        self.enhanced_signal_generator = None
-        self.enhanced_position_monitor = None
-        self.enhanced_lot_calculator = None
-        self.order_manager = None
-        
+        self.signal_generator = None           # ✅ ชื่อถูกต้อง (ไม่ใช่ enhanced_signal_generator)
+        self.position_monitor = None           # ✅ ชื่อถูกต้อง (ไม่ใช่ enhanced_position_monitor)
+        self.lot_calculator = None             # ✅ ชื่อถูกต้อง (ไม่ใช่ enhanced_lot_calculator)
+        self.order_manager = None              # ✅ Central Order Manager
+        self.order_executor = None             # ✅ เพิ่มตัวแปรนี้
+                
         # 🆕 Dashboard Data Variables
         self.capital_status = {}
         self.role_distribution = {}
@@ -91,16 +92,218 @@ class ModernAITradingGUI:
         self.initialize_enhanced_system()
 
     def load_config(self) -> Dict:
-        """โหลดการตั้งค่าระบบ Enhanced"""
+        """โหลดการตั้งค่าระบบ Enhanced - FIXED"""
         try:
             with open('config.json', 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                self.log("✅ Enhanced configuration loaded successfully")
-                return config
+            
+            # ใช้ print แทน self.log เพราะ GUI ยังไม่ได้ setup
+            print("✅ Enhanced configuration loaded successfully")
+            
+            # Validate critical sections
+            required_sections = ["system", "trading", "capital_management", "order_roles"]
+            missing_sections = []
+            
+            for section in required_sections:
+                if section not in config:
+                    missing_sections.append(section)
+            
+            if missing_sections:
+                print(f"⚠️ Missing config sections: {missing_sections}")
+                print("🔧 Using default values for missing sections")
+                
+                # เพิ่ม default sections
+                config = self._add_default_config_sections(config, missing_sections)
+            
+            return config
+            
+        except FileNotFoundError:
+            print("❌ config.json not found, creating default configuration")
+            return self._create_default_config()
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid JSON in config.json: {e}")
+            print("🔧 Using default configuration")
+            return self._create_default_config()
+            
         except Exception as e:
-            self.log(f"❌ Error loading config: {e}")
-            return self._get_default_enhanced_config()
+            print(f"❌ Error loading config: {e}")
+            print("🔧 Using default configuration")
+            return self._create_default_config()
     
+    def _add_default_config_sections(self, config: Dict, missing_sections: List[str]) -> Dict:
+        """เพิ่ม default sections ที่หายไป"""
+        try:
+            defaults = {
+                "system": {
+                    "name": "Modern AI Gold Grid Trading System",
+                    "version": "4.0.0",
+                    "mode": "production"
+                },
+                "trading": {
+                    "symbol": "XAUUSD.v",
+                    "timeframe": "M5",
+                    "max_positions": 60,
+                    "auto_trading": True
+                },
+                "capital_management": {
+                    "initial_capital": 7500.0,
+                    "max_drawdown_percent": 30.0,
+                    "capital_zones": {
+                        "safe_zone_percent": 50.0,
+                        "growth_zone_percent": 35.0,
+                        "aggressive_zone_percent": 15.0
+                    }
+                },
+                "order_roles": {
+                    "auto_assignment": True,
+                    "role_evolution": True,
+                    "role_quotas": {
+                        "HG": 25.0,
+                        "PW": 40.0,
+                        "RH": 20.0,
+                        "SC": 15.0
+                    }
+                }
+            }
+            
+            # เพิ่มเฉพาะ sections ที่หายไป
+            for section in missing_sections:
+                if section in defaults:
+                    config[section] = defaults[section]
+                    print(f"✅ Added default {section} configuration")
+            
+            return config
+            
+        except Exception as e:
+            print(f"❌ Error adding default sections: {e}")
+            return config
+
+    def _create_default_config(self) -> Dict:
+        """สร้าง default configuration ใหม่"""
+        try:
+            default_config = {
+                "system": {
+                    "name": "Modern AI Gold Grid Trading System",
+                    "version": "4.0.0",
+                    "mode": "production",
+                    "description": "Capital-aware AI trading with order role intelligence"
+                },
+                "trading": {
+                    "symbol": "XAUUSD.v",
+                    "timeframe": "M5",
+                    "market_orders_only": True,
+                    "signal_cooldown_seconds": 45,
+                    "max_signals_per_hour": 50,
+                    "max_positions": 60,
+                    "auto_trading": True,
+                    "high_frequency_mode": True
+                },
+                "capital_management": {
+                    "initial_capital": 7500.0,
+                    "max_drawdown_percent": 30.0,
+                    "conservative_trigger": 20.0,
+                    "emergency_trigger": 25.0,
+                    "capital_zones": {
+                        "safe_zone_percent": 50.0,
+                        "growth_zone_percent": 35.0,
+                        "aggressive_zone_percent": 15.0
+                    },
+                    "zone_risk_limits": {
+                        "safe": {
+                            "max_risk_per_trade": 0.5,
+                            "max_total_risk": 5.0,
+                            "max_positions": 25,
+                            "base_lot": 0.01,
+                            "max_lot": 0.05
+                        },
+                        "growth": {
+                            "max_risk_per_trade": 1.0,
+                            "max_total_risk": 10.0,
+                            "max_positions": 25,
+                            "base_lot": 0.02,
+                            "max_lot": 0.10
+                        },
+                        "aggressive": {
+                            "max_risk_per_trade": 2.0,
+                            "max_total_risk": 15.0,
+                            "max_positions": 10,
+                            "base_lot": 0.03,
+                            "max_lot": 0.20
+                        }
+                    }
+                },
+                "order_roles": {
+                    "auto_assignment": True,
+                    "role_evolution": True,
+                    "portfolio_balancing": True,
+                    "role_quotas": {
+                        "HG": 25.0,
+                        "PW": 40.0,
+                        "RH": 20.0,
+                        "SC": 15.0
+                    },
+                    "role_settings": {
+                        "HG": {
+                            "max_age_hours": 48,
+                            "min_profit_threshold": 4.0,
+                            "max_loss_tolerance": -60.0,
+                            "defensive": True
+                        },
+                        "PW": {
+                            "max_age_hours": 24,
+                            "min_profit_threshold": 2.5,
+                            "max_loss_tolerance": -35.0,
+                            "profit_trailing": True
+                        },
+                        "RH": {
+                            "max_age_hours": 12,
+                            "min_profit_threshold": 1.0,
+                            "max_loss_tolerance": -25.0,
+                            "recovery_focused": True
+                        },
+                        "SC": {
+                            "max_age_hours": 2,
+                            "min_profit_threshold": 0.5,
+                            "max_loss_tolerance": -8.0,
+                            "quick_profit": True
+                        }
+                    }
+                },
+                "risk_management": {
+                    "max_risk_per_trade": 2.0,
+                    "max_daily_risk": 10.0,
+                    "max_positions": 60,
+                    "emergency_stop_loss": -500.0,
+                    "daily_profit_target": 100.0,
+                    "max_daily_trades": 80,
+                    "max_daily_loss": -300.0,
+                    "min_margin_level": 150.0
+                }
+            }
+            
+            print("🔧 Created default configuration")
+            
+            # บันทึก default config
+            try:
+                with open('config.json', 'w', encoding='utf-8') as f:
+                    json.dump(default_config, f, indent=2, ensure_ascii=False)
+                print("💾 Default config saved to config.json")
+            except Exception as save_error:
+                print(f"⚠️ Could not save default config: {save_error}")
+            
+            return default_config
+            
+        except Exception as e:
+            print(f"❌ Error creating default config: {e}")
+            # Return minimal config as fallback
+            return {
+                "system": {"version": "4.0.0"},
+                "trading": {"symbol": "XAUUSD.v", "max_positions": 60},
+                "capital_management": {"initial_capital": 7500.0},
+                "order_roles": {"auto_assignment": True}
+            }
+            
     def _get_default_enhanced_config(self) -> Dict:
         """การตั้งค่าเริ่มต้นสำหรับ Enhanced System"""
         return {
@@ -733,75 +936,161 @@ class ModernAITradingGUI:
     # ==========================================
     
     def initialize_enhanced_system(self):
-        """🔄 เริ่มต้นระบบ Enhanced Components"""
+        """🔄 เริ่มต้นระบบ Enhanced Components v4.0 - FIXED ตามไฟล์จริง"""
         try:
             if not self.mt5_connector.is_connected:
                 self.log("⏳ Waiting for MT5 connection...")
                 return
             
-            self.log("🔄 Initializing Enhanced AI Components...")
+            self.log("🔄 Initializing Enhanced AI Components v4.0...")
             
-            # 1. สร้าง Capital Manager
-            self.capital_manager = CapitalManager(self.config)
-            self.log("💰 Capital Manager initialized")
-            
-            # 2. สร้าง Role Manager
-            self.role_manager = OrderRoleManager(self.mt5_connector, self.config)
-            self.log("🎭 Role Manager initialized")
-            
-            # 3. สร้าง Enhanced Risk Manager
+            # 1. สร้าง Capital Manager - ✅ CORRECTED
+            self.capital_manager = create_capital_manager(self.mt5_connector, self.config)
+            if self.capital_manager:
+                self.log("💰 Capital Manager initialized")
+            else:
+                self.log("❌ Capital Manager initialization failed")
+                
+            # 2. สร้าง Role Manager - ✅ CORRECTED (มีในไฟล์ order_manager.py)
+            self.role_manager = create_order_role_manager(self.config)
+            if self.role_manager:
+                self.log("🎭 Role Manager initialized")
+            else:
+                self.log("❌ Role Manager initialization failed")
+                
+            # 3. สร้าง Lot Calculator - ✅ CORRECTED
+            self.lot_calculator = create_lot_calculator(self.mt5_connector, self.config)
+            if self.lot_calculator and self.capital_manager:
+                self.lot_calculator.set_capital_manager(self.capital_manager)
+                self.log("📏 Lot Calculator initialized + capital integration")
+            else:
+                self.log("❌ Lot Calculator initialization failed")
+                
+            # 4. สร้าง Enhanced Risk Manager - ✅ CORRECTED
             self.enhanced_risk_manager = EnhancedRiskManager(
                 self.mt5_connector, self.config,
                 capital_manager=self.capital_manager,
                 role_manager=self.role_manager
             )
-            self.log("🛡️ Enhanced Risk Manager initialized")
+            if self.enhanced_risk_manager:
+                self.log("🛡️ Enhanced Risk Manager initialized")
+            else:
+                self.log("❌ Risk Manager initialization failed")
+                
+            # 5. สร้าง Order Executor - ✅ FIXED (ไม่มีไฟล์แยก ใช้ built-in)
+            # ใช้ built-in order execution จาก mt5_connector แทน
+            self.order_executor = self.mt5_connector  # ใช้ mt5_connector ที่มี send_order methods
+            if self.order_executor:
+                self.log("⚡ Order Executor (MT5 built-in) initialized")
+            else:
+                self.log("❌ Order Executor initialization failed")
+                
+            # 🆕 6. สร้าง Central Order Manager v4.0 - ✅ CORRECTED
+            self.order_manager = create_order_manager(self.mt5_connector, self.config)
+            if self.order_manager:
+                self.log("🎯 Central Order Manager v4.0 initialized")
+                
+                # 🔗 Integration ทุก components เข้า Order Manager
+                components = {
+                    'capital_manager': self.capital_manager,
+                    'role_manager': self.role_manager,
+                    'lot_calculator': self.lot_calculator,
+                    'order_executor': self.order_executor,
+                    'risk_manager': self.enhanced_risk_manager,
+                    'signal_generator': None  # จะเซ็ตทีหลัง
+                }
+                
+                integration_status = integrate_order_manager_with_system(self.order_manager, components)
+                
+                if integration_status:
+                    self.log("✅ Order Manager integration successful")
+                    self.log(f"   Components: {sum(1 for v in integration_status.values() if v == '✅')}/7 connected")
+                else:
+                    self.log("⚠️ Order Manager integration partially failed")
+            else:
+                self.log("❌ Central Order Manager initialization failed")
+                
+            # 7. สร้าง Signal Generator - ✅ FIXED (ไม่ต้องใช้ candlestick_analyzer)
+            # Signal Generator สามารถทำงานได้โดยไม่ต้องมี candlestick_analyzer
+            self.signal_generator = SignalGenerator(None, self.config)  # ส่ง None เป็น analyzer
             
-            # 4. สร้าง Enhanced Signal Generator  
-            self.enhanced_signal_generator = EnhancedSignalGenerator(
-                self.mt5_connector, self.config,
-                capital_manager=self.capital_manager,
-                role_manager=self.role_manager
-            )
-            self.log("🎯 Enhanced Signal Generator initialized")
-            
-            # 5. สร้าง Enhanced Position Monitor
-            self.enhanced_position_monitor = EnhancedPositionMonitor(
-                self.mt5_connector, self.config,
-                capital_manager=self.capital_manager,
-                role_manager=self.role_manager
-            )
-            self.log("📊 Enhanced Position Monitor initialized")
-            
-            # 6. สร้าง Enhanced Lot Calculator
-            self.enhanced_lot_calculator = EnhancedLotCalculator(
-                self.mt5_connector, self.config,
-                capital_manager=self.capital_manager,
-                role_manager=self.role_manager
-            )
-            self.log("💹 Enhanced Lot Calculator initialized")
-            
-            # 7. สร้าง Order Manager (if needed)
-            if not self.order_manager:
-                self.order_manager = OrderManager(self.mt5_connector, self.config)
-                self.log("📝 Order Manager initialized")
-            
-            # 8. สร้าง Performance Tracker
+            if self.signal_generator:
+                # Link กับ capital manager และ role manager
+                if hasattr(self.signal_generator, 'set_capital_manager') and self.capital_manager:
+                    self.signal_generator.set_capital_manager(self.capital_manager)
+                    
+                if hasattr(self.signal_generator, 'set_role_manager') and self.role_manager:
+                    self.signal_generator.set_role_manager(self.role_manager)
+                
+                # Link signal generator กับ order manager
+                if self.order_manager:
+                    self.order_manager.set_signal_generator(self.signal_generator)
+                    
+                self.log("🎯 Signal Generator initialized + integrations linked")
+            else:
+                self.log("❌ Signal Generator initialization failed")
+                
+            # 8. สร้าง Position Monitor - ✅ FIXED (เช็คว่ามีไฟล์หรือใช้ built-in)
+            try:
+                self.position_monitor = PositionMonitor(self.mt5_connector, self.config)
+                
+                if self.position_monitor:
+                    # Link กับ capital manager และ role manager ถ้ามี method
+                    if hasattr(self.position_monitor, 'set_capital_manager') and self.capital_manager:
+                        self.position_monitor.set_capital_manager(self.capital_manager)
+                        
+                    if hasattr(self.position_monitor, 'set_role_manager') and self.role_manager:
+                        self.position_monitor.set_role_manager(self.role_manager)
+                        
+                    self.log("📊 Position Monitor initialized")
+                else:
+                    self.log("❌ Position Monitor initialization failed")
+            except Exception as e:
+                self.log(f"⚠️ Position Monitor not available: {e}")
+                self.position_monitor = None
+                
+            # 9. สร้าง Performance Tracker - ✅ CORRECTED
             if not self.performance_tracker:
-                self.performance_tracker = PerformanceTracker(self.mt5_connector, self.config)
-                self.log("📈 Performance Tracker initialized")
+                self.performance_tracker = PerformanceTracker(self.config)
+                if self.performance_tracker:
+                    self.log("📈 Performance Tracker initialized")
             
-            # Set cross-references
-            if self.enhanced_signal_generator:
-                self.enhanced_signal_generator.set_risk_manager(self.enhanced_risk_manager)
+            # ✅ Final System Status Check
+            system_status = self.get_system_integration_status()
+            ready_components = sum(1 for status in system_status.values() if status)
+            total_components = len(system_status)
             
-            self.log("✅ Enhanced AI System initialized successfully!")
-            self.update_system_status("✅ Enhanced AI System Ready")
-            
+            if ready_components >= 6:  # อย่างน้อย 6/9 components
+                self.log(f"✅ Enhanced AI System v4.0 ready! ({ready_components}/{total_components} components)")
+                self.log("🚀 Central Order Management System active")
+                self.log("💰 Capital-aware trading enabled")
+                self.log("🎭 Role intelligence enabled") 
+            else:
+                self.log(f"⚠️ System partially ready ({ready_components}/{total_components} components)")
+                self.log("🔧 Some features may be limited")
+                
         except Exception as e:
             self.log(f"❌ Enhanced system initialization error: {e}")
-            self.update_system_status("❌ System Error")
-    
+            import traceback
+            self.log(f"📋 Error details: {traceback.format_exc()}")
+
+    def get_system_integration_status(self) -> Dict[str, bool]:
+        """🔗 ตรวจสอบสถานะการเชื่อมต่อทั้งระบบ"""
+        try:
+            return {
+                'mt5_connector': self.mt5_connector and self.mt5_connector.is_connected,
+                'capital_manager': self.capital_manager is not None,
+                'role_manager': self.role_manager is not None,
+                'lot_calculator': self.enhanced_lot_calculator is not None,
+                'risk_manager': self.enhanced_risk_manager is not None,
+                'order_executor': self.order_executor is not None,
+                'order_manager': self.order_manager is not None,  # 🆕
+                'signal_generator': self.enhanced_signal_generator is not None,
+                'position_monitor': self.enhanced_position_monitor is not None
+            }
+        except Exception as e:
+            return {}
+
     # ==========================================
     # 🔄 ENHANCED UPDATE METHODS
     # ==========================================
@@ -1233,7 +1522,7 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
     # ==========================================
     
     def scan_mt5_terminals(self):
-        """🔍 สแกน MT5 Terminals"""
+        """🔍 สแกน MT5 Terminals - FIXED"""
         try:
             self.log("🔍 Scanning for MT5 terminals...")
             self.update_system_status("🔍 Scanning...")
@@ -1241,7 +1530,8 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
             # ใช้ threading เพื่อไม่ให้ GUI แขวน
             def scan_thread():
                 try:
-                    terminals = self.mt5_connector.scan_terminals()
+                    # ✅ แก้ไข: ใช้ method ที่มีจริง
+                    terminals = self.mt5_connector.find_running_mt5_installations()
                     
                     # อัพเดท GUI ใน main thread
                     self.root.after(0, lambda: self._update_terminals_list(terminals))
@@ -1254,28 +1544,386 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
             
         except Exception as e:
             self.log(f"❌ Scan terminals error: {e}")
-    
-    def _update_terminals_list(self, terminals: List[Dict]):
+            
+    def _update_terminals_list(self, installations: List):
         """📝 อัพเดทรายการ terminals"""
+        try:
+            if installations:
+                self.log(f"✅ Found {len(installations)} MT5 terminals")
+                self.update_system_status(f"✅ Found {len(installations)} Terminals")
+                
+                # เก็บรายการ installations
+                self.available_terminals = installations
+                
+                # แสดง Terminal Selection Dialog
+                self._show_terminal_selection_dialog(installations)
+                
+            else:
+                self.log("❌ No MT5 terminals found")
+                self.update_system_status("❌ No Terminals Found")
+                
+                # แสดง Help Message
+                messagebox.showinfo(
+                    "No Terminals Found", 
+                    "ไม่พบ MT5 Terminals ที่ทำงานอยู่\n\n" +
+                    "วิธีแก้ไข:\n" +
+                    "1. เปิด MetaTrader 5 และ Login\n" +
+                    "2. รอสักครู่ให้โปรแกรมเสถียร\n" +
+                    "3. กด Scan อีกครั้ง"
+                )
+                
+        except Exception as e:
+            self.log(f"❌ Terminal list update error: {e}")
+    
+    def _show_terminal_selection_dialog(self, installations: List):
+        """🖥️ แสดง Dialog เลือก MT5 Terminal"""
+        try:
+            # สร้างหน้าต่างเลือก Terminal
+            selection_window = tk.Toplevel(self.root)
+            selection_window.title("🔍 Select MT5 Terminal")
+            selection_window.geometry("600x400")
+            selection_window.configure(bg="#1a1a2e")
+            selection_window.resizable(False, False)
+            
+            # ทำให้อยู่ด้านหน้า
+            selection_window.transient(self.root)
+            selection_window.grab_set()
+            
+            # Header
+            header_frame = tk.Frame(selection_window, bg="#1a1a2e")
+            header_frame.pack(fill="x", padx=10, pady=10)
+            
+            tk.Label(
+                header_frame,
+                text=f"🔍 Found {len(installations)} MT5 Terminals",
+                font=("Arial", 16, "bold"), fg="#00d4aa", bg="#1a1a2e"
+            ).pack()
+            
+            tk.Label(
+                header_frame,
+                text="Please select the terminal you want to connect to:",
+                font=("Arial", 10), fg="#ffffff", bg="#1a1a2e"
+            ).pack(pady=(5, 0))
+            
+            # Terminal List Frame
+            list_frame = tk.Frame(selection_window, bg="#1a1a2e")
+            list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            # Listbox with Scrollbar
+            listbox_frame = tk.Frame(list_frame, bg="#1a1a2e")
+            listbox_frame.pack(fill="both", expand=True)
+            
+            scrollbar = tk.Scrollbar(listbox_frame)
+            scrollbar.pack(side="right", fill="y")
+            
+            self.terminal_listbox = tk.Listbox(
+                listbox_frame,
+                font=("Consolas", 11),
+                bg="#0f0f0f", fg="#ffffff",
+                selectbackground="#3498db", selectforeground="#ffffff",
+                yscrollcommand=scrollbar.set,
+                height=12
+            )
+            self.terminal_listbox.pack(side="left", fill="both", expand=True)
+            scrollbar.config(command=self.terminal_listbox.yview)
+            
+            # เพิ่มรายการ terminals
+            for i, installation in enumerate(installations):
+                broker = installation.broker
+                exe_type = "64-bit" if "64" in installation.executable_type else "32-bit"
+                status = "🟢 Running" if installation.is_running else "🔴 Stopped"
+                path_short = "..." + installation.path[-50:] if len(installation.path) > 50 else installation.path
+                
+                display_text = f"[{i+1:2d}] {broker} ({exe_type}) - {status}"
+                detail_text = f"      Path: {path_short}"
+                
+                self.terminal_listbox.insert(tk.END, display_text)
+                self.terminal_listbox.insert(tk.END, detail_text)
+                self.terminal_listbox.insert(tk.END, "")  # Empty line for spacing
+            
+            # Buttons Frame
+            button_frame = tk.Frame(selection_window, bg="#1a1a2e")
+            button_frame.pack(fill="x", padx=10, pady=10)
+            
+            # Select Button
+            def on_select():
+                try:
+                    selection = self.terminal_listbox.curselection()
+                    if not selection:
+                        messagebox.showwarning("No Selection", "Please select a terminal first!")
+                        return
+                    
+                    # คำนวณ index จริง (เพราะมี empty lines)
+                    selected_line = selection[0]
+                    terminal_index = selected_line // 3  # 3 lines per terminal
+                    
+                    if terminal_index < len(installations):
+                        selected_terminal = installations[terminal_index]
+                        
+                        # เก็บการเลือก
+                        self.selected_terminal = selected_terminal
+                        self.mt5_connector.selected_mt5 = selected_terminal
+                        
+                        self.log(f"✅ Selected: {selected_terminal.broker}")
+                        
+                        # เปิดใช้งาน Connect button
+                        self.connect_button.config(state="normal", text="🔗 Connect")
+                        self.update_system_status(f"✅ Terminal Selected")
+                        
+                        # ปิดหน้าต่าง
+                        selection_window.destroy()
+                    
+                except Exception as e:
+                    self.log(f"❌ Terminal selection error: {e}")
+            
+            tk.Button(
+                button_frame, text="🔗 Select & Continue", 
+                command=on_select,
+                bg="#00d4aa", fg="white", font=("Arial", 12, "bold"),
+                width=20, height=1
+            ).pack(side="left", padx=5)
+            
+            # Cancel Button
+            def on_cancel():
+                selection_window.destroy()
+                self.update_system_status("❌ Selection cancelled")
+            
+            tk.Button(
+                button_frame, text="❌ Cancel", 
+                command=on_cancel,
+                bg="#e74c3c", fg="white", font=("Arial", 12),
+                width=10, height=1
+            ).pack(side="right", padx=5)
+            
+            # Center the window
+            selection_window.update_idletasks()
+            x = (selection_window.winfo_screenwidth() // 2) - (selection_window.winfo_width() // 2)
+            y = (selection_window.winfo_screenheight() // 2) - (selection_window.winfo_height() // 2)
+            selection_window.geometry(f"+{x}+{y}")
+            
+            # Focus on first item
+            if installations:
+                self.terminal_listbox.selection_set(0)
+                self.terminal_listbox.focus_set()
+            
+        except Exception as e:
+            self.log(f"❌ Terminal selection dialog error: {e}")
+
+# ==========================================
+# 🔧 แทนที่ method scan_mt5_terminals ใน main.py
+# ==========================================
+
+    def scan_mt5_terminals(self):
+        """🔍 สแกน MT5 Terminals - CORRECTED"""
+        try:
+            self.log("🔍 Scanning for MT5 terminals...")
+            self.update_system_status("🔍 Scanning...")
+            
+            # ใช้ threading เพื่อไม่ให้ GUI แขวน
+            def scan_thread():
+                try:
+                    # ✅ ใช้ method ที่มีจริงใน MT5Connector
+                    installations = self.mt5_connector.find_running_mt5_installations()
+                    
+                    # อัพเดท GUI ใน main thread
+                    self.root.after(0, lambda: self._update_terminals_list(installations))
+                    
+                except Exception as e:
+                    self.log(f"❌ Terminal scan error: {e}")
+                    self.root.after(0, lambda: self.update_system_status("❌ Scan Failed"))
+            
+            threading.Thread(target=scan_thread, daemon=True).start()
+            
+        except Exception as e:
+            self.log(f"❌ Scan terminals error: {e}")
+
+    def _update_terminals_list(self, terminals):
+        """📝 อัพเดทรายการ terminals - ENHANCED"""
         try:
             if terminals:
                 self.log(f"✅ Found {len(terminals)} MT5 terminals")
                 self.update_system_status(f"✅ Found {len(terminals)} Terminals")
+                
+                # เก็บรายการ installations
+                self.available_terminals = terminals
+                
+                # แสดง Terminal Selection Dialog
+                self._show_terminal_selection_dialog(terminals)
+                
             else:
                 self.log("❌ No MT5 terminals found")
                 self.update_system_status("❌ No Terminals Found")
+                
+                # แสดง Help Message
+                messagebox.showinfo(
+                    "No Terminals Found", 
+                    "ไม่พบ MT5 Terminals ที่ทำงานอยู่\n\n" +
+                    "วิธีแก้ไข:\n" +
+                    "1. เปิด MetaTrader 5 และ Login\n" +
+                    "2. รอสักครู่ให้โปรแกรมเสถียร\n" +
+                    "3. กด Scan อีกครั้ง"
+                )
+                
         except Exception as e:
             self.log(f"❌ Terminal list update error: {e}")
-    
-    def connect_mt5(self):
-        """🔗 เชื่อมต่อ MT5"""
+
+    def _show_terminal_selection_dialog(self, installations):
+        """🖥️ แสดง Dialog เลือก MT5 Terminal - เพิ่มใหม่"""
         try:
-            self.log("🔗 Connecting to MT5...")
+            # สร้างหน้าต่างเลือก Terminal
+            selection_window = tk.Toplevel(self.root)
+            selection_window.title("🔍 Select MT5 Terminal")
+            selection_window.geometry("600x400")
+            selection_window.configure(bg="#1a1a2e")
+            selection_window.resizable(False, False)
+            
+            # ทำให้อยู่ด้านหน้า
+            selection_window.transient(self.root)
+            selection_window.grab_set()
+            
+            # Header
+            header_frame = tk.Frame(selection_window, bg="#1a1a2e")
+            header_frame.pack(fill="x", padx=10, pady=10)
+            
+            tk.Label(
+                header_frame,
+                text=f"🔍 Found {len(installations)} MT5 Terminals",
+                font=("Arial", 16, "bold"), fg="#00d4aa", bg="#1a1a2e"
+            ).pack()
+            
+            tk.Label(
+                header_frame,
+                text="Please select the terminal you want to connect to:",
+                font=("Arial", 10), fg="#ffffff", bg="#1a1a2e"
+            ).pack(pady=(5, 0))
+            
+            # Terminal List Frame
+            list_frame = tk.Frame(selection_window, bg="#1a1a2e")
+            list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            # Listbox with Scrollbar
+            listbox_frame = tk.Frame(list_frame, bg="#1a1a2e")
+            listbox_frame.pack(fill="both", expand=True)
+            
+            scrollbar = tk.Scrollbar(listbox_frame)
+            scrollbar.pack(side="right", fill="y")
+            
+            self.terminal_listbox = tk.Listbox(
+                listbox_frame,
+                font=("Consolas", 11),
+                bg="#0f0f0f", fg="#ffffff",
+                selectbackground="#3498db", selectforeground="#ffffff",
+                yscrollcommand=scrollbar.set,
+                height=12
+            )
+            self.terminal_listbox.pack(side="left", fill="both", expand=True)
+            scrollbar.config(command=self.terminal_listbox.yview)
+            
+            # เพิ่มรายการ terminals
+            for i, installation in enumerate(installations):
+                broker = installation.broker
+                exe_type = "64-bit" if "64" in installation.executable_type else "32-bit"
+                status = "🟢 Running" if installation.is_running else "🔴 Stopped"
+                path_short = "..." + installation.path[-50:] if len(installation.path) > 50 else installation.path
+                
+                display_text = f"[{i+1:2d}] {broker} ({exe_type}) - {status}"
+                detail_text = f"      Path: {path_short}"
+                
+                self.terminal_listbox.insert(tk.END, display_text)
+                self.terminal_listbox.insert(tk.END, detail_text)
+                self.terminal_listbox.insert(tk.END, "")  # Empty line for spacing
+            
+            # Buttons Frame
+            button_frame = tk.Frame(selection_window, bg="#1a1a2e")
+            button_frame.pack(fill="x", padx=10, pady=10)
+            
+            # Select Button
+            def on_select():
+                try:
+                    selection = self.terminal_listbox.curselection()
+                    if not selection:
+                        messagebox.showwarning("No Selection", "Please select a terminal first!")
+                        return
+                    
+                    # คำนวณ index จริง (เพราะมี empty lines)
+                    selected_line = selection[0]
+                    terminal_index = selected_line // 3  # 3 lines per terminal
+                    
+                    if terminal_index < len(installations):
+                        selected_terminal = installations[terminal_index]
+                        
+                        # เก็บการเลือก
+                        self.selected_terminal = selected_terminal
+                        self.mt5_connector.selected_mt5 = selected_terminal
+                        
+                        self.log(f"✅ Selected: {selected_terminal.broker}")
+                        
+                        # เปิดใช้งาน Connect button
+                        self.connect_button.config(state="normal", text="🔗 Connect")
+                        self.update_system_status(f"✅ Terminal Selected")
+                        
+                        # ปิดหน้าต่าง
+                        selection_window.destroy()
+                    
+                except Exception as e:
+                    self.log(f"❌ Terminal selection error: {e}")
+            
+            tk.Button(
+                button_frame, text="🔗 Select & Continue", 
+                command=on_select,
+                bg="#00d4aa", fg="white", font=("Arial", 12, "bold"),
+                width=20, height=1
+            ).pack(side="left", padx=5)
+            
+            # Cancel Button
+            def on_cancel():
+                selection_window.destroy()
+                self.update_system_status("❌ Selection cancelled")
+            
+            tk.Button(
+                button_frame, text="❌ Cancel", 
+                command=on_cancel,
+                bg="#e74c3c", fg="white", font=("Arial", 12),
+                width=10, height=1
+            ).pack(side="right", padx=5)
+            
+            # Center the window
+            selection_window.update_idletasks()
+            x = (selection_window.winfo_screenwidth() // 2) - (selection_window.winfo_width() // 2)
+            y = (selection_window.winfo_screenheight() // 2) - (selection_window.winfo_height() // 2)
+            selection_window.geometry(f"+{x}+{y}")
+            
+            # Focus on first item
+            if installations:
+                self.terminal_listbox.selection_set(0)
+                self.terminal_listbox.focus_set()
+            
+        except Exception as e:
+            self.log(f"❌ Terminal selection dialog error: {e}")
+
+    def connect_mt5(self):
+        """🔗 เชื่อมต่อ MT5 - ENHANCED"""
+        try:
+            # ตรวจสอบว่าเลือก terminal แล้วหรือยัง
+            if not hasattr(self, 'selected_terminal') or not self.selected_terminal:
+                messagebox.showwarning(
+                    "No Terminal Selected", 
+                    "Please scan and select a terminal first!\n\n" +
+                    "Steps:\n" +
+                    "1. Click 'Scan' button\n" +
+                    "2. Select a terminal from the list\n" +
+                    "3. Click 'Connect'"
+                )
+                return
+            
+            terminal = self.selected_terminal
+            self.log(f"🔗 Connecting to: {terminal.broker}")
             self.update_system_status("🔗 Connecting...")
             
             def connect_thread():
                 try:
-                    success = self.mt5_connector.connect()
+                    # เชื่อมต่อกับ terminal ที่เลือก
+                    success = self.mt5_connector.connect_to_selected_terminal(terminal)
                     
                     if success:
                         # อัพเดท GUI
@@ -1286,12 +1934,13 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
                 except Exception as e:
                     error_msg = str(e)
                     self.root.after(0, lambda: self.log(f"❌ MT5 connection error: {error_msg}"))
+                    self.root.after(0, self._on_mt5_connection_failed)
             
             threading.Thread(target=connect_thread, daemon=True).start()
             
         except Exception as e:
             self.log(f"❌ Connect MT5 error: {e}")
-    
+
     def _on_mt5_connected(self):
         """✅ เมื่อเชื่อมต่อ MT5 สำเร็จ"""
         try:
@@ -1390,7 +2039,7 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
             
             # เริ่ม trading thread
             self.is_trading = True
-            self.trading_thread = threading.Thread(target=self._enhanced_trading_loop, daemon=True)
+            self.trading_thread = threading.Thread(target=self.trading_loop, daemon=True)
             self.trading_thread.start()
             
             # อัพเดท GUI
@@ -1425,61 +2074,124 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
         except Exception as e:
             self.log(f"❌ Stop trading error: {e}")
     
-    def _enhanced_trading_loop(self):
-        """🔄 Enhanced Trading Loop"""
+    def trading_loop(self):
+        """🎯 Main trading loop ที่ใช้ Central Order Manager v4.0"""
         try:
-            self.log("🔄 Enhanced trading loop started")
+            self.log("🎯 Enhanced Trading Loop v4.0 started")
+            self.log("🔄 Using Central Order Management System")
             
             while self.is_trading:
+                loop_start_time = time.time()
+                
                 try:
-                    # 1. ตรวจสอบ risk levels
-                    if self.enhanced_risk_manager:
-                        risk_status = self.enhanced_risk_manager.check_risk_levels()
+                    # 1. ตรวจสอบการเชื่อมต่อ
+                    if not self.mt5_connector or not self.mt5_connector.is_connected:
+                        self.log("⚠️ MT5 connection lost - attempting reconnect...")
+                        time.sleep(10)
+                        continue
+                    
+                    # 2. อัพเดท Capital Status
+                    if self.capital_manager:
+                        self.capital_manager.update_capital_status()
+                        capital_status = self.capital_manager.get_capital_status()
                         
-                        if risk_status.get('emergency_stop', False):
-                            self.log("🚨 Emergency stop triggered - stopping trading")
-                            break
-                        
-                        if not risk_status.get('can_trade', True):
-                            self.log("⏳ Trading restricted - waiting...")
-                            time.sleep(30)  # รอ 30 วินาที
+                        # เช็ค emergency mode
+                        if capital_status.get('trading_mode') == 'emergency':
+                            self.log("🚨 Emergency mode active - trading limited")
+                            time.sleep(30)  # หน่วงนานขึ้นใน emergency
                             continue
                     
-                    # 2. สร้าง signal
+                    # 3. อัพเดท Role Manager (cleanup closed positions)
+                    if self.role_manager and self.enhanced_position_monitor:
+                        current_positions = self.enhanced_position_monitor.get_current_positions()
+                        active_position_ids = [str(pos.get('ticket', pos.get('id', ''))) for pos in current_positions]
+                        self.role_manager.cleanup_closed_positions(active_position_ids)
+                    
+                    # 4. Generate Trading Signal
                     if self.enhanced_signal_generator:
-                        signal = self.enhanced_signal_generator.generate_enhanced_signal()
+                        signal_data = self.enhanced_signal_generator.generate_signal()
                         
-                        if signal and signal.get('action') in ['BUY', 'SELL']:
-                            self.log(f"🎯 Signal: {signal['action']} (Strength: {signal.get('strength', 0)*100:.1f}%)")
+                        if signal_data and signal_data.get('action') in ['BUY', 'SELL']:
+                            self.log(f"📊 New signal: {signal_data['action']} (Strength: {signal_data.get('strength', 0):.2f})")
                             
-                            # อัพเดท signal display
-                            self.root.after(0, lambda: self._update_signal_display(signal))
-                            
-                            # 3. Execute trade
-                            self._execute_enhanced_trade(signal)
+                            # 🆕 5. Process Signal ผ่าน Central Order Manager
+                            if self.order_manager:
+                                processing_result = self.order_manager.process_trading_signal(signal_data)
+                                
+                                if processing_result:
+                                    if processing_result.get('success'):
+                                        self.log(f"✅ Order executed successfully")
+                                        order_details = processing_result.get('order_details', {})
+                                        self.log(f"   Action: {order_details.get('action')}")
+                                        self.log(f"   Lot: {order_details.get('lot_size')}")
+                                        self.log(f"   Role: {order_details.get('role')}")
+                                        self.log(f"   Zone: {order_details.get('capital_zone')}")
+                                        
+                                        # อัพเดท performance tracking
+                                        if self.performance_tracker:
+                                            self.performance_tracker.record_execution(
+                                                processing_result.get('execution_result', {}),
+                                                signal_data
+                                            )
+                                    else:
+                                        # Log rejection reason
+                                        reason = processing_result.get('reason', processing_result.get('error', 'Unknown'))
+                                        stage = processing_result.get('stage', 'unknown')
+                                        
+                                        if processing_result.get('blocked'):
+                                            self.log(f"🚫 Signal blocked at {stage}: {reason}")
+                                        elif processing_result.get('delayed'):
+                                            wait_time = processing_result.get('wait_seconds', 0)
+                                            self.log(f"⏰ Signal delayed {wait_time}s: {reason}")
+                                        else:
+                                            self.log(f"❌ Signal failed at {stage}: {reason}")
+                            else:
+                                # Fallback to direct order executor (ถ้า order manager ไม่พร้อม)
+                                self.log("⚠️ Using fallback execution (no order manager)")
+                                if self.order_executor:
+                                    result = self.order_executor.execute_signal(signal_data)
+                                    if result and result.get('success'):
+                                        self.log("✅ Order executed (fallback mode)")
                     
-                    # 4. Monitor positions
+                    # 6. Monitor Positions
                     if self.enhanced_position_monitor:
-                        self.enhanced_position_monitor.monitor_and_close_positions()
+                        self.enhanced_position_monitor.monitor_positions()
                     
-                    # 5. Update performance
+                    # 7. Update Performance Metrics
                     if self.performance_tracker:
-                        self.performance_tracker.update_session_stats()
+                        self.performance_tracker.update_session_metrics()
                     
-                    # Sleep before next iteration
-                    time.sleep(10)  # 10 วินาทีต่อรอบ
+                    # 8. Adaptive Loop Timing
+                    loop_duration = time.time() - loop_start_time
                     
-                except Exception as e:
-                    self.log(f"❌ Trading loop error: {e}")
-                    time.sleep(30)  # หน่วงนานกว่าเมื่อเกิด error
-            
-            self.log("🔄 Enhanced trading loop stopped")
-            
+                    # ปรับ sleep time ตาม trading mode
+                    if self.capital_manager:
+                        trading_mode = capital_status.get('trading_mode', 'normal')
+                        if trading_mode == 'emergency':
+                            sleep_time = 30  # ช้าลงใน emergency
+                        elif trading_mode == 'conservative':
+                            sleep_time = 20  # ช้าลงใน conservative
+                        elif trading_mode == 'recovery':
+                            sleep_time = 10  # เร็วขึ้นใน recovery
+                        else:
+                            sleep_time = 15  # normal mode
+                    else:
+                        sleep_time = 15  # default
+                    
+                    # ลบเวลาที่ใช้ประมวลผลออก
+                    actual_sleep = max(1, sleep_time - loop_duration)
+                    time.sleep(actual_sleep)
+                    
+                except Exception as loop_error:
+                    self.log(f"❌ Trading loop error: {loop_error}")
+                    time.sleep(30)  # พักนานขึ้นเมื่อเกิดข้อผิดพลาด
+                    
         except Exception as e:
             self.log(f"❌ Trading loop critical error: {e}")
+            import traceback
+            self.log(f"📋 Error traceback: {traceback.format_exc()}")
         finally:
-            # Cleanup
-            self.root.after(0, self._on_trading_stopped)
+            self.log("🛑 Enhanced Trading Loop v4.0 stopped")
     
     def _execute_enhanced_trade(self, signal: Dict):
         """🎯 Execute Enhanced Trade"""

@@ -262,7 +262,7 @@ class MT5Connector:
         return False  # ให้ user เลือกเอง
     
     def _attempt_connection(self, installation: MT5Installation) -> bool:
-        """ลองเชื่อมต่อกับ MT5 installation"""
+        """ลองเชื่อมต่อกับ MT5 installation - FIXED"""
         try:
             print(f"🔗 กำลังเชื่อมต่อ: {installation.broker}")
             print(f"📁 Path: {installation.path}")
@@ -273,7 +273,7 @@ class MT5Connector:
                 return False
                 
             # Initialize MT5
-            if not mt5.initialize():
+            if not mt5.initialize(path=installation.path):
                 print(f"❌ ไม่สามารถ initialize MT5 ได้")
                 return False
                 
@@ -289,34 +289,33 @@ class MT5Connector:
             
             # Detect gold symbol
             gold_symbol = self.detect_gold_symbol()
-            if not gold_symbol:
-                print("⚠️ ไม่เจอสัญลักษณ์ทองคำ")
-                # ไม่ return False เพราะอาจจะเทรดอย่างอื่น
-                
             if gold_symbol:
                 print(f"🥇 สัญลักษณ์ทองคำ: {gold_symbol}")
-            
-            # เก็บข้อมูลการเชื่อมต่อ
+            else:
+                print("⚠️ ไม่เจอสัญลักษณ์ทองคำ")
+                
+            # เก็บข้อมูลการเชื่อมต่อ - ✅ FIXED attributes
             self.is_connected = True
             self.account_info = {
                 'login': account_info.login,
                 'balance': account_info.balance,
                 'equity': account_info.equity,
                 'margin': account_info.margin,
-                'free_margin': account_info.margin_free,
+                'free_margin': account_info.margin_free,  # ✅ แก้ไข
                 'leverage': account_info.leverage,
                 'company': account_info.company,
                 'currency': account_info.currency
             }
             
-            self.gold_symbol = gold_symbol
-            
+            if gold_symbol:
+                self.gold_symbol = gold_symbol
+                
             return True
             
         except Exception as e:
-            print(f"❌ เชื่อมต่อไม่สำเร็จ: {e}")
+            print(f"❌ Connection error: {e}")
             return False
-    
+        
     # === Gold Symbol Detection (ใช้โค้ดเดิม) ===
     
     def detect_gold_symbol(self):
@@ -394,75 +393,154 @@ class MT5Connector:
         ]
     
     def get_account_info(self) -> Dict:
-        """ดึงข้อมูลบัญชีปัจจุบัน - FIXED Margin Calculation"""
+        """ดึงข้อมูลบัญชีปัจจุบัน - FIXED attribute names"""
         try:
             if not self.is_connected:
-                print(f"❌ MT5 not connected")
                 return {}
             
-            # ดึงข้อมูลจาก MT5 API
+            # ดึงข้อมูลล่าสุดจาก MT5
             account_info = mt5.account_info()
-            if account_info is None:
-                print(f"❌ Cannot get account info from MT5")
-                return {}
+            if not account_info:
+                return self.account_info  # Return cached data if current fetch fails
             
-            # 🔧 FIXED: ใช้ attribute names ที่ถูกต้อง
-            account_data = {
-                'login': getattr(account_info, 'login', 0),
-                'balance': float(getattr(account_info, 'balance', 0.0)),
-                'equity': float(getattr(account_info, 'equity', 0.0)),
-                'margin': float(getattr(account_info, 'margin', 0.0)),
-                'free_margin': float(getattr(account_info, 'margin_free', 0.0)),
-                'margin_level': float(getattr(account_info, 'margin_level', 0.0)),
-                'leverage': int(getattr(account_info, 'leverage', 100)),
-                'company': str(getattr(account_info, 'company', 'Unknown')),
-                'currency': str(getattr(account_info, 'currency', 'USD')),
-                'name': str(getattr(account_info, 'name', 'Trading Account')),
-                'server': str(getattr(account_info, 'server', 'Unknown'))
+            # อัพเดทข้อมูล - ✅ FIXED attribute names
+            updated_info = {
+                'login': account_info.login,
+                'balance': account_info.balance,
+                'equity': account_info.equity,
+                'free_margin': account_info.margin_free,  # ✅ แก้ไข: free_margin → margin_free
+                'margin': account_info.margin,
+                'profit': account_info.profit,
+                'leverage': account_info.leverage,
+                'company': account_info.company,
+                'currency': account_info.currency,
+                
+                # เพิ่มข้อมูลเสริม
+                'margin_level': account_info.margin_level if hasattr(account_info, 'margin_level') else 0.0,
+                'margin_so_call': account_info.margin_so_call if hasattr(account_info, 'margin_so_call') else 0.0,
+                'margin_so_so': account_info.margin_so_so if hasattr(account_info, 'margin_so_so') else 0.0,
             }
             
-            # 🔧 FIXED: คำนวณ margin level ถ้า MT5 ไม่ให้มา
-            if account_data['margin_level'] == 0.0 and account_data['margin'] > 0:
-                account_data['margin_level'] = (account_data['equity'] / account_data['margin']) * 100
-            elif account_data['margin'] == 0:
-                account_data['margin_level'] = float('inf')  # ไม่มี positions = margin level สูงสุด
+            # อัพเดท cache
+            self.account_info = updated_info
             
-            # Debug info
-            # print(f"📊 Account Info Retrieved:")
-            # print(f"   Login: {account_data['login']}")
-            # print(f"   Balance: ${account_data['balance']:,.2f}")
-            # print(f"   Equity: ${account_data['equity']:,.2f}")
-            # print(f"   Margin: ${account_data['margin']:,.2f}")
-            # print(f"   Free Margin: ${account_data['free_margin']:,.2f}")
-            # print(f"   Margin Level: {account_data['margin_level']:.2f}%")
-            # print(f"   Leverage: 1:{account_data['leverage']}")
-            
-            return account_data
+            return updated_info
             
         except Exception as e:
             print(f"❌ Get account info error: {e}")
-            return {}
+            return self.account_info  # Return cached data on error
     
     def get_gold_symbol(self) -> Optional[str]:
         """ดึงสัญลักษณ์ทองคำที่ตรวจจับได้"""
         return self.gold_symbol
     
     def disconnect(self):
-        """ตัดการเชื่อมต่อ"""
+        """🔌 ตัดการเชื่อมต่อ MT5"""
         try:
             if self.is_connected:
                 mt5.shutdown()
                 self.is_connected = False
-                self.gold_symbol = None
+                self.selected_mt5 = None
                 self.account_info = {}
                 self.symbol_info = {}
-                print("✅ ตัดการเชื่อมต่อเรียบร้อย")
-                return True
-        except Exception as e:
-            print(f"Error disconnecting: {e}")
+                print("🔌 MT5 disconnected successfully")
             
-        return False
+        except Exception as e:
+            print(f"❌ Disconnect error: {e}")
 
+    def connect_to_selected_terminal(self, installation: MT5Installation) -> bool:
+        """
+        🔗 เชื่อมต่อกับ MT5 Terminal ที่เลือก - FIXED AccountInfo attributes
+        
+        Args:
+            installation: MT5Installation object ที่เลือก
+            
+        Returns:
+            bool: True ถ้าเชื่อมต่อสำเร็จ
+        """
+        try:
+            print(f"🔗 กำลังเชื่อมต่อกับ: {installation.broker}")
+            print(f"📁 Path: {installation.path}")
+            print(f"🖥️ Type: {installation.executable_type}")
+            
+            # ตั้งค่า selected terminal
+            self.selected_mt5 = installation
+            
+            # เชื่อมต่อด้วย MetaTrader5 library
+            if not mt5.initialize(path=installation.path):
+                error_code = mt5.last_error()
+                print(f"❌ MT5 initialization failed: {error_code}")
+                return False
+            
+            print("✅ MT5 library initialized successfully")
+            
+            # ตรวจสอบการเชื่อมต่อ
+            terminal_info = mt5.terminal_info()
+            if not terminal_info:
+                print("❌ Could not get terminal info")
+                return False
+            
+            account_info = mt5.account_info()
+            if not account_info:
+                print("❌ Could not get account info - please login to MT5")
+                return False
+            
+            print(f"✅ Connected to account: {account_info.login}")
+            print(f"💰 Balance: ${account_info.balance:.2f}")
+            print(f"🏢 Broker: {account_info.company}")
+            
+            # ตรวจจับสัญลักษณ์ทองคำ
+            gold_symbol = self.detect_gold_symbol()
+            if gold_symbol:
+                print(f"📋 Detected gold symbol: {gold_symbol}")
+                self.gold_symbol = gold_symbol
+            else:
+                print("⚠️ Could not detect gold symbol")
+            
+            # อัพเดทข้อมูล - ✅ FIXED attribute names
+            self.is_connected = True
+            self.account_info = {
+                'login': account_info.login,
+                'balance': account_info.balance,
+                'equity': account_info.equity,
+                'free_margin': account_info.margin_free,  # ✅ แก้ไข: free_margin → margin_free
+                'margin': account_info.margin,
+                'profit': account_info.profit,
+                'leverage': account_info.leverage,
+                'company': account_info.company,
+                'currency': account_info.currency
+            }
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Connection error: {e}")
+            return False
+
+    def connect(self) -> bool:
+        """🔗 เชื่อมต่อ MT5 แบบเดิม (ใช้ default หรือ first available)"""
+        try:
+            # ถ้ามี selected terminal ใช้มัน
+            if self.selected_mt5:
+                return self.connect_to_selected_terminal(self.selected_mt5)
+            
+            # ไม่งั้นลองหา running terminals
+            installations = self.find_running_mt5_installations()
+            if installations:
+                print("🔍 Found running terminals, connecting to first one...")
+                return self.connect_to_selected_terminal(installations[0])
+            
+            # สุดท้าย ลองเชื่อมต่อโดยไม่ระบุ path
+            if not mt5.initialize():
+                return False
+                
+            self.is_connected = True
+            return True
+            
+        except Exception as e:
+            print(f"❌ Default connection error: {e}")
+            return False
+    
     def get_current_price(self, symbol: str) -> float:
         """Get current market price for symbol"""
         try:
@@ -521,42 +599,42 @@ class MT5Connector:
             print(f"❌ Get spread info error: {e}")
             return {}
     
-# === Test Function ===
+# # === Test Function ===
 
-def test_connector():
-    """ทดสอบ  Connector"""
-    print("🧪 ทดสอบ  MT5 Connector...")
-    print("=" * 50)
+# def test_connector():
+#     """ทดสอบ  Connector"""
+#     print("🧪 ทดสอบ  MT5 Connector...")
+#     print("=" * 50)
     
-    connector = MT5Connector()
+#     connector = MT5Connector()
     
-    # Test 1: หา installations ที่ทำงานอยู่
-    installations = connector.find_running_mt5_installations()
+#     # Test 1: หา installations ที่ทำงานอยู่
+#     installations = connector.find_running_mt5_installations()
     
-    if not installations:
-        print("❌ ไม่เจอ MT5 ที่ทำงานอยู่")
-        print("💡 กรุณาเปิด MT5 ก่อน")
-        return
+#     if not installations:
+#         print("❌ ไม่เจอ MT5 ที่ทำงานอยู่")
+#         print("💡 กรุณาเปิด MT5 ก่อน")
+#         return
         
-    # Test 2: แสดงรายการ
-    print(f"\n📊 รายการ MT5 ที่ทำงานอยู่:")
-    for i, inst in enumerate(installations):
-        exe_type = "64-bit" if "64" in inst.executable_type else "32-bit"
-        print(f"  {i}: 🟢 {inst.broker} ({exe_type})")
-        print(f"     {inst.path}")
+#     # Test 2: แสดงรายการ
+#     print(f"\n📊 รายการ MT5 ที่ทำงานอยู่:")
+#     for i, inst in enumerate(installations):
+#         exe_type = "64-bit" if "64" in inst.executable_type else "32-bit"
+#         print(f"  {i}: 🟢 {inst.broker} ({exe_type})")
+#         print(f"     {inst.path}")
     
-    # Test 3: ทดสอบการเชื่อมต่อกับตัวแรก
-    print(f"\n🔗 ทดสอบเชื่อมต่อกับตัวแรก...")
-    if connector.connect_to_installation(0):
-        print("🎉 เชื่อมต่อสำเร็จ!")
-        print(f"   Account: {connector.account_info.get('login')}")
-        print(f"   Broker: {connector.account_info.get('company')}")
-        print(f"   Gold: {connector.gold_symbol}")
+#     # Test 3: ทดสอบการเชื่อมต่อกับตัวแรก
+#     print(f"\n🔗 ทดสอบเชื่อมต่อกับตัวแรก...")
+#     if connector.connect_to_installation(0):
+#         print("🎉 เชื่อมต่อสำเร็จ!")
+#         print(f"   Account: {connector.account_info.get('login')}")
+#         print(f"   Broker: {connector.account_info.get('company')}")
+#         print(f"   Gold: {connector.gold_symbol}")
         
-        # ทดสอบตัดการเชื่อมต่อ
-        connector.disconnect()
-    else:
-        print("❌ เชื่อมต่อไม่สำเร็จ")
+#         # ทดสอบตัดการเชื่อมต่อ
+#         connector.disconnect()
+#     else:
+#         print("❌ เชื่อมต่อไม่สำเร็จ")
 
-if __name__ == "__main__":
-    test_connector()
+# if __name__ == "__main__":
+#     test_connector()
