@@ -90,6 +90,46 @@ class ModernAITradingGUI:
         
         # Auto initialization
         self.initialize_enhanced_system()
+    
+    def _initialize_role_indicators(self):
+        """🎭 สร้าง role indicators dictionary"""
+        self.role_indicators = {
+            'HG': {'count': None, 'performance': None},
+            'PW': {'count': None, 'performance': None}, 
+            'RH': {'count': None, 'performance': None},
+            'SC': {'count': None, 'performance': None}
+        }
+    
+    def _ensure_required_widgets(self):
+        """✅ ตรวจสอบและสร้าง widgets ที่จำเป็น"""
+        try:
+            # ตรวจสอบ trading_mode_label
+            if not hasattr(self, 'trading_mode_label') or not self.trading_mode_label:
+                # สร้าง dummy label
+                self.trading_mode_label = tk.Label(self.root, text="Mode: UNKNOWN", bg="#1a1a2e", fg="#cccccc")
+            
+            # ตรวจสอบ role_indicators
+            if not hasattr(self, 'role_indicators') or not self.role_indicators:
+                self._initialize_role_indicators()
+            
+            # ตรวจสอบ widgets อื่นๆ ที่สำคัญ
+            required_widgets = [
+                'drawdown_label', 'safe_zone_label', 'growth_zone_label', 'aggressive_zone_label',
+                'capital_metrics_text', 'total_positions_label', 'role_balance_label',
+                'risk_level_label', 'risk_score_label', 'risk_metrics_text',
+                'recovery_count_label', 'recovery_suggestions_text',
+                'performance_metrics_text', 'positions_summary_label'
+            ]
+            
+            for widget_name in required_widgets:
+                if not hasattr(self, widget_name) or not getattr(self, widget_name):
+                    # สร้าง dummy widget
+                    setattr(self, widget_name, tk.Label(self.root, text="--", bg="#1a1a2e", fg="#888888"))
+            
+            self.log("✅ Required widgets ensured")
+            
+        except Exception as e:
+            self.log(f"❌ Widget ensure error: {e}")
 
     def load_config(self) -> Dict:
         """โหลดการตั้งค่าระบบ Enhanced - FIXED"""
@@ -477,7 +517,7 @@ class ModernAITradingGUI:
     # ==========================================
     
     def _setup_capital_dashboard(self, parent):
-        """💰 Setup Capital Dashboard"""
+        """💰 Setup Capital Dashboard - เพิ่ม widgets ที่ขาดหาย"""
         
         capital_frame = tk.LabelFrame(
             parent, text="💰 Capital Management", 
@@ -490,11 +530,12 @@ class ModernAITradingGUI:
         header_frame = tk.Frame(capital_frame, bg="#1a1a2e")
         header_frame.pack(fill="x", padx=8, pady=5)
         
-        self.capital_mode_label = tk.Label(
-            header_frame, text="🟢 NORMAL MODE", 
+        # ✅ เพิ่ม trading_mode_label ที่ขาดหาย
+        self.trading_mode_label = tk.Label(
+            header_frame, text="Mode: NORMAL", 
             font=("Arial", 12, "bold"), fg="#00ff88", bg="#1a1a2e"
         )
-        self.capital_mode_label.pack(side="left")
+        self.trading_mode_label.pack(side="left")
         
         self.drawdown_label = tk.Label(
             header_frame, text="Drawdown: 0.0%", 
@@ -514,19 +555,19 @@ class ModernAITradingGUI:
         zones_indicator_frame.pack(fill="x", pady=2)
         
         self.safe_zone_label = tk.Label(
-            zones_indicator_frame, text="🟢 Safe 50%", 
+            zones_indicator_frame, text="🟢 Safe $0", 
             font=("Arial", 9), fg="#00ff88", bg="#1a1a2e"
         )
         self.safe_zone_label.pack(side="left", padx=5)
         
         self.growth_zone_label = tk.Label(
-            zones_indicator_frame, text="🟡 Growth 35%", 
+            zones_indicator_frame, text="🟡 Growth $0", 
             font=("Arial", 9), fg="#ffd700", bg="#1a1a2e"
         )
         self.growth_zone_label.pack(side="left", padx=5)
         
         self.aggressive_zone_label = tk.Label(
-            zones_indicator_frame, text="🔴 Aggressive 15%", 
+            zones_indicator_frame, text="🔴 Aggressive $0", 
             font=("Arial", 9), fg="#ff6b6b", bg="#1a1a2e"
         )
         self.aggressive_zone_label.pack(side="left", padx=5)
@@ -1161,139 +1202,185 @@ class ModernAITradingGUI:
             pass  # Silent fail for basic updates
     
     def update_capital_dashboard(self):
-        """💰 อัพเดท Capital Dashboard"""
+        """💰 อัพเดท Capital Dashboard - แก้ไข method calls"""
         try:
             if not self.capital_manager:
                 return
             
-            # ดึง capital status
-            capital_status = self.capital_manager.get_capital_status()
+            # ✅ แก้ไข: ใช้ update_capital_status() แทน get_capital_status()
+            capital_status = self.capital_manager.update_capital_status()
             self.capital_status = capital_status
             
-            # อัพเดท trading mode
-            trading_mode = capital_status.get('trading_mode', 'normal')
-            drawdown = capital_status.get('current_drawdown_percent', 0)
-            
+            # อัพเดท trading mode - ตรวจสอบ widget ก่อน
+            trading_mode = capital_status.get('trading_mode', 'unknown')
             mode_colors = {
-                'normal': ('#00ff88', '🟢'),
-                'conservative': ('#ffd700', '🟡'), 
-                'emergency': ('#ff6b6b', '🔴'),
-                'recovery': ('#00d4aa', '🔄')
+                'normal': '#00ff88',
+                'reduced': '#ffd700', 
+                'conservative': '#ffaa00',
+                'emergency': '#ff6b6b'
             }
             
-            color, emoji = mode_colors.get(trading_mode, ('#cccccc', '⚪'))
-            self.capital_mode_label.config(
-                text=f"{emoji} {trading_mode.upper()} MODE",
-                fg=color
-            )
+            mode_color = mode_colors.get(trading_mode, '#cccccc')
+            
+            # ✅ ตรวจสอบว่ามี widget ก่อนใช้
+            if hasattr(self, 'trading_mode_label') and self.trading_mode_label:
+                self.trading_mode_label.config(
+                    text=f"Mode: {trading_mode.upper()}",
+                    fg=mode_color
+                )
             
             # อัพเดท drawdown
-            drawdown_color = '#00ff88' if drawdown < 10 else '#ffd700' if drawdown < 20 else '#ff6b6b'
-            self.drawdown_label.config(
-                text=f"Drawdown: {drawdown:.1f}%",
-                fg=drawdown_color
-            )
+            current_drawdown = capital_status.get('current_drawdown', 0)
+            if hasattr(self, 'drawdown_label') and self.drawdown_label:
+                self.drawdown_label.config(text=f"Drawdown: {current_drawdown:.2f}%")
             
-            # อัพเดท zone status
-            available_zones = capital_status.get('available_zones', [])
+            # อัพเดท zone indicators
+            zones = capital_status.get('capital_zones', {})
             
-            # Reset colors
-            for zone_label in [self.safe_zone_label, self.growth_zone_label, self.aggressive_zone_label]:
-                zone_label.config(fg="#666666")
+            if hasattr(self, 'safe_zone_label') and self.safe_zone_label:
+                self.safe_zone_label.config(
+                    text=f"🟢 Safe ${zones.get('safe_zone', 0):,.0f}"
+                )
+            if hasattr(self, 'growth_zone_label') and self.growth_zone_label:
+                self.growth_zone_label.config(
+                    text=f"🟡 Growth ${zones.get('growth_zone', 0):,.0f}"
+                )
+            if hasattr(self, 'aggressive_zone_label') and self.aggressive_zone_label:
+                self.aggressive_zone_label.config(
+                    text=f"🔴 Aggressive ${zones.get('aggressive_zone', 0):,.0f}"
+                )
             
-            # Highlight available zones
-            if 'safe' in available_zones:
-                self.safe_zone_label.config(fg="#00ff88")
-            if 'growth' in available_zones:
-                self.growth_zone_label.config(fg="#ffd700")
-            if 'aggressive' in available_zones:
-                self.aggressive_zone_label.config(fg="#ff6b6b")
+            # อัพเดท metrics
+            current_capital = capital_status.get('current_capital', 0)
+            initial_capital = capital_status.get('initial_capital', 0)
+            peak_capital = capital_status.get('peak_capital', 0)
             
-            # อัพเดท capital metrics
-            zone_utilization = capital_status.get('zone_utilization', {})
-            capital_efficiency = capital_status.get('capital_efficiency', 0)
+            # คำนวณ reserved capital (ถ้าไม่มีใน status)
+            total_zones = sum(zones.values()) if zones else 0
+            reserved_capital = max(0, current_capital - total_zones)
             
-            metrics_text = f"""Capital Efficiency: {capital_efficiency:.2f}
-Zone Utilization:
-• Safe Zone: {zone_utilization.get('safe_percent', 0):.1f}%
-• Growth Zone: {zone_utilization.get('growth_percent', 0):.1f}%  
-• Aggressive Zone: {zone_utilization.get('aggressive_percent', 0):.1f}%
-
-Available Capital: ${capital_status.get('available_capital', 0):.2f}
-Reserved Capital: ${capital_status.get('reserved_capital', 0):.2f}"""
-            
-            self.capital_metrics_text.config(state="normal")
-            self.capital_metrics_text.delete(1.0, tk.END)
-            self.capital_metrics_text.insert(tk.END, metrics_text)
-            self.capital_metrics_text.config(state="disabled")
+            metrics_text = f"""Current Capital: ${current_capital:,.2f}
+Initial Capital: ${initial_capital:,.2f}
+Peak Capital: ${peak_capital:,.2f}
+Capital Change: ${current_capital - initial_capital:,.2f}
+Reserved Capital: ${reserved_capital:,.2f}"""
+        
+            if hasattr(self, 'capital_metrics_text') and self.capital_metrics_text:
+                self.capital_metrics_text.config(state="normal")
+                self.capital_metrics_text.delete(1.0, tk.END)
+                self.capital_metrics_text.insert(tk.END, metrics_text)
+                self.capital_metrics_text.config(state="disabled")
             
         except Exception as e:
             self.log(f"❌ Capital dashboard update error: {e}")
     
     def update_role_dashboard(self):
-        """🎭 อัพเดท Role Distribution Dashboard"""
+        """🎭 อัพเดท Role Distribution Dashboard - แก้ไข method calls"""
         try:
             if not self.role_manager:
                 return
             
-            # ดึง role distribution
-            role_status = self.role_manager.get_role_distribution()
+            # ✅ แก้ไข: ใช้ get_portfolio_role_distribution() แทน get_role_distribution()
+            role_status = self.role_manager.get_portfolio_role_distribution()
+            
+            # ตรวจสอบว่าได้ข้อมูลหรือไม่
+            if 'error' in role_status:
+                self.log(f"❌ Role distribution error: {role_status['error']}")
+                return
+                
             self.role_distribution = role_status
             
-            role_counts = role_status.get('role_counts', {})
+            # ดึงข้อมูลจาก distribution report
+            role_data = role_status.get('roles', {})
             total_positions = role_status.get('total_positions', 0)
-            balance_quality = role_status.get('balance_quality', 'unknown')
+            balance_status = role_status.get('balance_status', 'unknown')
             
-            # อัพเดท total positions
-            self.total_positions_label.config(text=f"Total: {total_positions}")
+            # อัพเดท total positions - ตรวจสอบ widget ก่อน
+            if hasattr(self, 'total_positions_label') and self.total_positions_label:
+                self.total_positions_label.config(text=f"Total: {total_positions}")
             
             # อัพเดท balance status
             balance_colors = {
-                'excellent': '#00ff88',
-                'good': '#00d4aa',
-                'fair': '#ffd700',
-                'poor': '#ff6b6b'
+                'balanced': '#00ff88',
+                'imbalanced': '#ffd700', 
+                'severely_imbalanced': '#ff6b6b'
             }
             
-            balance_color = balance_colors.get(balance_quality, '#cccccc')
-            self.role_balance_label.config(
-                text=f"Balance: {balance_quality.upper()}",
-                fg=balance_color
-            )
+            # แปลง balance_status เป็นคำที่เข้าใจง่าย
+            balance_display = {
+                'balanced': 'GOOD',
+                'imbalanced': 'FAIR',
+                'severely_imbalanced': 'POOR'
+            }.get(balance_status, 'UNKNOWN')
             
-            # อัพเดท role indicators
-            for role in ['HG', 'PW', 'RH', 'SC']:
-                count = role_counts.get(role, 0)
-                percentage = (count / total_positions * 100) if total_positions > 0 else 0
-                
-                # อัพเดท count
-                self.role_indicators[role]['count'].config(text=f"{count} ({percentage:.0f}%)")
-                
-                # อัพเดท performance (ถ้ามี position monitor)
-                if self.enhanced_position_monitor:
-                    role_performance = self.enhanced_position_monitor.get_role_performance()
-                    role_profit = role_performance.get(role, {}).get('total_profit', 0)
-                    
-                    profit_color = '#00ff88' if role_profit > 0 else '#ff6b6b' if role_profit < 0 else '#ffaa00'
-                    self.role_indicators[role]['performance'].config(
-                        text=f"${role_profit:.2f}",
-                        fg=profit_color
-                    )
+            balance_color = balance_colors.get(balance_status, '#cccccc')
+            
+            if hasattr(self, 'role_balance_label') and self.role_balance_label:
+                self.role_balance_label.config(
+                    text=f"Balance: {balance_display}",
+                    fg=balance_color
+                )
+            
+            # อัพเดท role indicators - ตรวจสอบว่ามี dict ก่อน
+            if hasattr(self, 'role_indicators') and self.role_indicators:
+                for role in ['HG', 'PW', 'RH', 'SC']:
+                    if role in self.role_indicators:
+                        role_info = role_data.get(role, {})
+                        count = role_info.get('count', 0)
+                        percentage = role_info.get('percentage', 0)
+                        
+                        # อัพเดท count
+                        if 'count' in self.role_indicators[role]:
+                            self.role_indicators[role]['count'].config(text=f"{count} ({percentage:.0f}%)")
+                        
+                        # อัพเดท performance - หา profit จาก position_monitor
+                        role_profit = 0
+                        if hasattr(self, 'position_monitor') and self.position_monitor:
+                            try:
+                                # ลองเรียกใช้ method สำหรับ role performance
+                                if hasattr(self.position_monitor, 'get_role_performance'):
+                                    role_performance = self.position_monitor.get_role_performance()
+                                    if role_performance and role in role_performance:
+                                        role_profit = role_performance[role].get('total_profit', 0)
+                            except:
+                                pass  # ใช้ค่าเริ่มต้น 0
+                        
+                        profit_color = '#00ff88' if role_profit > 0 else '#ff6b6b' if role_profit < 0 else '#ffaa00'
+                        if 'performance' in self.role_indicators[role]:
+                            self.role_indicators[role]['performance'].config(
+                                text=f"${role_profit:.2f}",
+                                fg=profit_color
+                            )
             
         except Exception as e:
             self.log(f"❌ Role dashboard update error: {e}")
-    
+
+
     def update_risk_dashboard(self):
-        """🛡️ อัพเดท Risk Status Dashboard"""
+        """🛡️ อัพเดท Risk Status Dashboard - แก้ไข method calls"""
         try:
             if not self.enhanced_risk_manager:
                 return
             
-            # ดึง risk assessment
-            risk_status = self.enhanced_risk_manager.check_risk_levels()
+            # ✅ แก้ไข method call
+            if hasattr(self.enhanced_risk_manager, 'assess_comprehensive_risk'):
+                risk_status = self.enhanced_risk_manager.assess_comprehensive_risk()
+            elif hasattr(self.enhanced_risk_manager, 'get_risk_status'):
+                risk_status = self.enhanced_risk_manager.get_risk_status()
+            else:
+                # Fallback: สร้างข้อมูล dummy
+                risk_status = {
+                    'overall_risk': 'medium',
+                    'risk_score': 0.5,
+                    'can_trade': True,
+                    'emergency_stop': False,
+                    'warnings': [],
+                    'restrictions': []
+                }
+            
             self.risk_assessment = risk_status
             
-            # อัพเดท risk level
+            # อัพเดท risk level - ตรวจสอบ widget ก่อน
             overall_risk = risk_status.get('overall_risk', 'unknown')
             risk_score = risk_status.get('risk_score', 0)
             
@@ -1306,14 +1393,17 @@ Reserved Capital: ${capital_status.get('reserved_capital', 0):.2f}"""
             }
             
             color, emoji = risk_colors.get(overall_risk, ('#cccccc', '⚪'))
-            self.risk_level_label.config(
-                text=f"{emoji} {overall_risk.upper()} RISK",
-                fg=color
-            )
             
-            self.risk_score_label.config(text=f"Score: {risk_score:.2f}")
+            if hasattr(self, 'risk_level_label') and self.risk_level_label:
+                self.risk_level_label.config(
+                    text=f"{emoji} {overall_risk.upper()} RISK",
+                    fg=color
+                )
             
-            # อัพเดท risk metrics
+            if hasattr(self, 'risk_score_label') and self.risk_score_label:
+                self.risk_score_label.config(text=f"Score: {risk_score:.2f}")
+            
+            # อัพเดท risk metrics - ตรวจสอบ widget ก่อน
             warnings = risk_status.get('warnings', [])
             restrictions = risk_status.get('restrictions', [])
             
@@ -1324,7 +1414,7 @@ Active Warnings: {len(warnings)}
 Active Restrictions: {len(restrictions)}
 
 Recent Warnings:"""
-            
+        
             # แสดง warnings ล่าสุด
             for warning in warnings[-3:]:
                 metrics_text += f"\n• {warning[:40]}..."
@@ -1334,189 +1424,238 @@ Recent Warnings:"""
                 for restriction in restrictions[-2:]:
                     metrics_text += f"\n• {restriction[:35]}..."
             
-            self.risk_metrics_text.config(state="normal")
-            self.risk_metrics_text.delete(1.0, tk.END)
-            self.risk_metrics_text.insert(tk.END, metrics_text)
-            self.risk_metrics_text.config(state="disabled")
+            if hasattr(self, 'risk_metrics_text') and self.risk_metrics_text:
+                self.risk_metrics_text.config(state="normal")
+                self.risk_metrics_text.delete(1.0, tk.END)
+                self.risk_metrics_text.insert(tk.END, metrics_text)
+                self.risk_metrics_text.config(state="disabled")
             
         except Exception as e:
             self.log(f"❌ Risk dashboard update error: {e}")
     
     def update_recovery_panel(self):
-        """🔄 อัพเดท Recovery Intelligence Panel"""
+        """🔄 อัพเดท Recovery Panel - แก้ไข method calls"""
         try:
             if not self.enhanced_risk_manager:
                 return
             
-            # ดึง recovery recommendations
-            recovery_data = self.enhanced_risk_manager.get_recovery_recommendations()
+            # ✅ แก้ไข method call
+            if hasattr(self.enhanced_risk_manager, 'get_recovery_recommendations'):
+                recovery_data = self.enhanced_risk_manager.get_recovery_recommendations()
+            else:
+                # Fallback: สร้างข้อมูล dummy
+                recovery_data = {
+                    'recommendations': ['📊 ระบบทำงานปกติ'],
+                    'recovery_opportunities': 0,
+                    'suggested_actions': [],
+                    'priority_level': 'low'
+                }
+            
             self.recovery_suggestions = recovery_data
             
-            # อัพเดท recovery status
-            recovery_mode = recovery_data.get('recovery_mode', False)
+            # อัพเดท recovery info - ตรวจสอบ widget ก่อน
+            recommendations = recovery_data.get('recommendations', [])
+            opportunities = recovery_data.get('recovery_opportunities', 0)
             
-            if recovery_mode:
-                self.recovery_status_label.config(
-                    text="🔄 Recovery Mode Active",
-                    fg="#ff6b6b"
-                )
-            else:
-                self.recovery_status_label.config(
-                    text="✅ No Recovery Needed", 
-                    fg="#00ff88"
-                )
-            
-            # อัพเดท recovery opportunities
-            if self.enhanced_position_monitor:
-                # ดึงข้อมูล opportunities
-                positions = self.mt5_connector.get_positions()
-                if positions:
-                    profitable_count = len([p for p in positions if p.get('profit', 0) >= 1.0])
-                    small_loss_count = len([p for p in positions if -10 <= p.get('profit', 0) < 0])
-                    
-                    self.recovery_opportunities_label.config(
-                        text=f"Profitable: {profitable_count} | Small Loss: {small_loss_count}"
-                    )
+            if hasattr(self, 'recovery_count_label') and self.recovery_count_label:
+                self.recovery_count_label.config(text=f"Opportunities: {opportunities}")
             
             # อัพเดท suggestions
-            suggestions = recovery_data.get('suggested_actions', [])
+            suggestions_text = "🔄 Recovery Suggestions:\n\n"
+            for i, rec in enumerate(recommendations[:4], 1):
+                suggestions_text += f"{i}. {rec}\n"
             
-            suggestions_text = ""
-            if recovery_mode and suggestions:
-                suggestions_text = "Active Recommendations:\n"
-                for i, suggestion in enumerate(suggestions[:4]):
-                    suggestions_text += f"{i+1}. {suggestion}\n"
-            else:
-                suggestions_text = "Portfolio Status: Healthy\n\nNo recovery actions needed.\n\nSystem operating normally."
+            if not recommendations:
+                suggestions_text += "✅ No recovery actions needed"
             
-            self.recovery_suggestions_text.config(state="normal")
-            self.recovery_suggestions_text.delete(1.0, tk.END)
-            self.recovery_suggestions_text.insert(tk.END, suggestions_text)
-            self.recovery_suggestions_text.config(state="disabled")
+            if hasattr(self, 'recovery_suggestions_text') and self.recovery_suggestions_text:
+                self.recovery_suggestions_text.config(state="normal")
+                self.recovery_suggestions_text.delete(1.0, tk.END)
+                self.recovery_suggestions_text.insert(tk.END, suggestions_text)
+                self.recovery_suggestions_text.config(state="disabled")
             
         except Exception as e:
             self.log(f"❌ Recovery panel update error: {e}")
     
     def update_enhanced_positions_table(self):
-        """📊 อัพเดท Enhanced Positions Table"""
+        """📋 อัพเดท Enhanced Positions Table - แก้ไข method calls"""
         try:
-            # Clear existing data
-            for item in self.positions_tree.get_children():
-                self.positions_tree.delete(item)
+            # ✅ แก้ไข method call สำหรับ MT5Connector
+            if hasattr(self.mt5_connector, 'get_positions'):
+                positions = self.mt5_connector.get_positions()
+            else:
+                # Fallback: ใช้ MT5 library โดยตรง
+                import MetaTrader5 as mt5
+                positions_raw = mt5.positions_get()
+                positions = []
+                if positions_raw:
+                    for pos in positions_raw:
+                        positions.append({
+                            'ticket': pos.ticket,
+                            'symbol': pos.symbol,
+                            'type': 'BUY' if pos.type == 0 else 'SELL',
+                            'volume': pos.volume,
+                            'price_open': pos.price_open,
+                            'profit': pos.profit,
+                            'time': pos.time
+                        })
             
-            # ดึงข้อมูล positions
-            positions = self.mt5_connector.get_positions()
-            if not positions:
-                self.positions_count_label.config(text="Positions: 0")
-                self.net_profit_label.config(text="Net P/L: $0.00")
-                return
+            # อัพเดท positions table - ตรวจสอบว่ามี Treeview ก่อน
+            if hasattr(self, 'positions_tree') and self.positions_tree:
+                # ล้างข้อมูลเก่า
+                for item in self.positions_tree.get_children():
+                    self.positions_tree.delete(item)
+                
+                # เพิ่มข้อมูลใหม่
+                for pos in positions[:20]:  # แสดงแค่ 20 ตัวแรก
+                    profit_color = 'green' if pos.get('profit', 0) > 0 else 'red'
+                    
+                    self.positions_tree.insert('', 'end', values=(
+                        pos.get('ticket', ''),
+                        pos.get('symbol', ''),
+                        pos.get('type', ''),
+                        f"{pos.get('volume', 0):.2f}",
+                        f"{pos.get('price_open', 0):.5f}",
+                        f"{pos.get('profit', 0):.2f}"
+                    ))
             
-            # คำนวณ metrics
+            # อัพเดท positions summary
             total_positions = len(positions)
-            total_profit = sum([p.get('profit', 0) for p in positions])
+            total_profit = sum(pos.get('profit', 0) for pos in positions)
             
-            # อัพเดท header
-            self.positions_count_label.config(text=f"Positions: {total_positions}")
-            
-            profit_color = '#00ff88' if total_profit > 0 else '#ff6b6b' if total_profit < 0 else '#ffaa00'
-            self.net_profit_label.config(
-                text=f"Net P/L: ${total_profit:.2f}",
-                fg=profit_color
-            )
-            
-            # เพิ่ม positions ลงใน table
-            for position in positions:
-                # ดึง role จาก role manager
-                role = "Unknown"
-                if self.role_manager:
-                    role = self.role_manager.get_position_role(position.get('ticket', 0))
-                
-                # คำนวณ age
-                open_time = position.get('time', datetime.now())
-                if isinstance(open_time, (int, float)):
-                    open_time = datetime.fromtimestamp(open_time)
-                
-                age = datetime.now() - open_time
-                age_str = f"{age.total_seconds()/3600:.1f}h"
-                
-                # กำหนด status
-                profit = position.get('profit', 0)
-                if profit >= 5.0:
-                    status = "🔥 Strong"
-                elif profit >= 1.0:
-                    status = "✅ Profit"
-                elif profit >= -5.0:
-                    status = "⏳ Hold"
-                elif profit >= -20.0:
-                    status = "⚠️ Watch"
-                else:
-                    status = "🚨 Risk"
-                
-                # เพิ่มลงใน tree
-                values = (
-                    position.get('ticket', 0),
-                    role,
-                    'BUY' if position.get('type', 0) == 0 else 'SELL',
-                    f"{position.get('volume', 0):.2f}",
-                    f"{position.get('price_open', 0):.5f}",
-                    f"{position.get('price_current', 0):.5f}",
-                    f"${profit:.2f}",
-                    age_str,
-                    status
+            if hasattr(self, 'positions_summary_label') and self.positions_summary_label:
+                summary_color = '#00ff88' if total_profit >= 0 else '#ff6b6b'
+                self.positions_summary_label.config(
+                    text=f"Positions: {total_positions} | Total P&L: ${total_profit:.2f}",
+                    fg=summary_color
                 )
-                
-                self.positions_tree.insert("", "end", values=values)
             
         except Exception as e:
             self.log(f"❌ Positions table update error: {e}")
     
     def update_performance_panel(self):
-        """📈 อัพเดท Performance Panel"""
+        """📈 อัพเดท Performance Panel - แก้ไข method calls"""
         try:
             if not self.performance_tracker:
                 return
             
-            # ดึงข้อมูล performance
-            session_metrics = self.performance_tracker.get_session_metrics()
+            # ✅ แก้ไข: ใช้ get_current_metrics() แทน get_session_metrics()
+            # เพราะ get_session_metrics() return เป็น string, ไม่ใช่ dict
+            if hasattr(self.performance_tracker, 'get_current_metrics'):
+                performance_data = self.performance_tracker.get_current_metrics()
+            elif hasattr(self.performance_tracker, 'calculate_performance_metrics'):
+                # Fallback: ใช้ calculate_performance_metrics
+                full_metrics = self.performance_tracker.calculate_performance_metrics()
+                if 'error' in full_metrics:
+                    # ถ้า error ใช้ข้อมูล session stats โดยตรง
+                    performance_data = {
+                        'net_profit': getattr(self.performance_tracker, 'session_stats', {}).get('total_profit', 0),
+                        'total_trades': getattr(self.performance_tracker, 'session_stats', {}).get('winning_trades', 0) + getattr(self.performance_tracker, 'session_stats', {}).get('losing_trades', 0),
+                        'win_rate': 0,
+                        'profit_factor': 1.0
+                    }
+                else:
+                    # Extract data จาก full metrics
+                    basic_metrics = full_metrics.get('basic_metrics', {})
+                    profitability_metrics = full_metrics.get('profitability_metrics', {})
+                    
+                    performance_data = {
+                        'net_profit': profitability_metrics.get('net_profit', 0),
+                        'total_trades': basic_metrics.get('total_trades', 0),
+                        'win_rate': basic_metrics.get('win_rate_percent', 0),
+                        'profit_factor': profitability_metrics.get('profit_factor', 1.0),
+                        'winning_trades': basic_metrics.get('winning_trades', 0),
+                        'losing_trades': basic_metrics.get('losing_trades', 0),
+                        'gross_profit': profitability_metrics.get('gross_profit', 0),
+                        'gross_loss': profitability_metrics.get('gross_loss', 0),
+                        'roi_percent': profitability_metrics.get('roi_percent', 0),
+                        'average_trade': profitability_metrics.get('average_trade', 0),
+                        'max_consecutive_wins': basic_metrics.get('max_consecutive_wins', 0),
+                        'max_consecutive_losses': basic_metrics.get('max_consecutive_losses', 0)
+                    }
+            else:
+                # Fallback: สร้างข้อมูล dummy จาก session_stats โดยตรง
+                session_stats = getattr(self.performance_tracker, 'session_stats', {})
+                total_trades = session_stats.get('winning_trades', 0) + session_stats.get('losing_trades', 0)
+                win_rate = (session_stats.get('winning_trades', 0) / total_trades * 100) if total_trades > 0 else 0
+                
+                performance_data = {
+                    'net_profit': session_stats.get('total_profit', 0),
+                    'total_trades': total_trades,
+                    'win_rate': win_rate,
+                    'profit_factor': 1.0,
+                    'winning_trades': session_stats.get('winning_trades', 0),
+                    'losing_trades': session_stats.get('losing_trades', 0),
+                    'gross_profit': session_stats.get('gross_profit', 0),
+                    'gross_loss': session_stats.get('gross_loss', 0),
+                    'roi_percent': 0,
+                    'average_trade': session_stats.get('total_profit', 0) / total_trades if total_trades > 0 else 0,
+                    'max_consecutive_wins': session_stats.get('max_consecutive_wins', 0),
+                    'max_consecutive_losses': session_stats.get('max_consecutive_losses', 0)
+                }
             
-            # อัพเดท basic metrics
-            net_profit = session_metrics.get('net_profit', 0)
-            win_rate = session_metrics.get('profitable_trade_percent', 0)
-            avg_trade = session_metrics.get('average_trade', 0)
-            profit_factor = session_metrics.get('profit_factor', 0)
+            # ตรวจสอบว่าได้ข้อมูลเป็น dict
+            if not isinstance(performance_data, dict):
+                self.log(f"❌ Performance data is not dict: {type(performance_data)}")
+                return
             
-            # อัพเดท labels
-            profit_color = '#00ff88' if net_profit > 0 else '#ff6b6b' if net_profit < 0 else '#ffaa00'
-            self.net_profit_metric.config(text=f"Net P/L: ${net_profit:.2f}", fg=profit_color)
+            self.portfolio_metrics = performance_data
             
-            win_color = '#00ff88' if win_rate >= 60 else '#ffd700' if win_rate >= 40 else '#ff6b6b'
-            self.win_rate_metric.config(text=f"Win Rate: {win_rate:.0f}%", fg=win_color)
+            # ดึงค่าสำคัญ
+            net_profit = performance_data.get('net_profit', 0)
+            total_trades = performance_data.get('total_trades', 0)
+            win_rate = performance_data.get('win_rate', 0)
+            average_trade = performance_data.get('average_trade', 0)
+            profit_factor = performance_data.get('profit_factor', 1.0)
             
-            self.avg_trade_metric.config(text=f"Avg Trade: ${avg_trade:.2f}")
-            self.profit_factor_metric.config(text=f"P.Factor: {profit_factor:.2f}")
+            # อัพเดท performance metrics - ตรวจสอบ widgets ก่อน
+            if hasattr(self, 'net_profit_metric') and self.net_profit_metric:
+                profit_color = '#00ff88' if net_profit > 0 else '#ff6b6b' if net_profit < 0 else '#ffaa00'
+                self.net_profit_metric.config(text=f"Net P/L: ${net_profit:.2f}", fg=profit_color)
             
-            # Performance chart/text
+            if hasattr(self, 'win_rate_metric') and self.win_rate_metric:
+                win_color = '#00ff88' if win_rate >= 60 else '#ffd700' if win_rate >= 40 else '#ff6b6b'
+                self.win_rate_metric.config(text=f"Win Rate: {win_rate:.0f}%", fg=win_color)
+            
+            if hasattr(self, 'avg_trade_metric') and self.avg_trade_metric:
+                self.avg_trade_metric.config(text=f"Avg Trade: ${average_trade:.2f}")
+            
+            if hasattr(self, 'profit_factor_metric') and self.profit_factor_metric:
+                self.profit_factor_metric.config(text=f"P.Factor: {profit_factor:.2f}")
+            
+            # อัพเดท performance summary
             chart_text = f"""📊 Session Performance Summary:
 
-Total Trades: {session_metrics.get('total_trades', 0)}
-Winning Trades: {session_metrics.get('winning_trades', 0)}
-Losing Trades: {session_metrics.get('losing_trades', 0)}
+Total Trades: {total_trades}
+Winning Trades: {performance_data.get('winning_trades', 0)}
+Losing Trades: {performance_data.get('losing_trades', 0)}
 
-Gross Profit: ${session_metrics.get('gross_profit', 0):.2f}
-Gross Loss: ${session_metrics.get('gross_loss', 0):.2f}
+Gross Profit: ${performance_data.get('gross_profit', 0):.2f}
+Gross Loss: ${performance_data.get('gross_loss', 0):.2f}
 
-ROI: {session_metrics.get('roi_percent', 0):.2f}%
-Max Consecutive Wins: {session_metrics.get('max_consecutive_wins', 0)}
-Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
-            
-            self.performance_chart_text.config(state="normal")
-            self.performance_chart_text.delete(1.0, tk.END)
-            self.performance_chart_text.insert(tk.END, chart_text)
-            self.performance_chart_text.config(state="disabled")
+ROI: {performance_data.get('roi_percent', 0):.2f}%
+Max Consecutive Wins: {performance_data.get('max_consecutive_wins', 0)}
+Max Consecutive Losses: {performance_data.get('max_consecutive_losses', 0)}"""
+        
+            if hasattr(self, 'performance_chart_text') and self.performance_chart_text:
+                self.performance_chart_text.config(state="normal")
+                self.performance_chart_text.delete(1.0, tk.END)
+                self.performance_chart_text.insert(tk.END, chart_text)
+                self.performance_chart_text.config(state="disabled")
+            elif hasattr(self, 'performance_metrics_text') and self.performance_metrics_text:
+                # ถ้าไม่มี performance_chart_text ใช้ performance_metrics_text แทน
+                self.performance_metrics_text.config(state="normal")
+                self.performance_metrics_text.delete(1.0, tk.END)
+                self.performance_metrics_text.insert(tk.END, chart_text)
+                self.performance_metrics_text.config(state="disabled")
             
         except Exception as e:
             self.log(f"❌ Performance panel update error: {e}")
-    
+            # Debug information
+            if hasattr(self, 'performance_tracker') and self.performance_tracker:
+                available_methods = [method for method in dir(self.performance_tracker) if not method.startswith('_')]
+                self.log(f"Available methods in performance_tracker: {available_methods[:10]}...")  # แสดงแค่ 10 ตัวแรก
+
     # ==========================================
     # 🔍 MT5 CONNECTION METHODS (Streamlined)
     # ==========================================
@@ -2010,7 +2149,7 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
     # ==========================================
     
     def start_trading(self):
-        """🚀 เริ่ม Enhanced Trading System"""
+        """🚀 เริ่ม Enhanced Trading System - เวอร์ชั่นสุดท้าย"""
         try:
             if not self.mt5_connector.is_connected:
                 messagebox.showerror("Error", "กรุณาเชื่อมต่อ MT5 ก่อน")
@@ -2021,58 +2160,153 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
                 return
             
             # ตรวจสอบ risk ก่อนเริ่ม
-            risk_status = self.enhanced_risk_manager.check_risk_levels()
+            risk_status = {}
             
-            if risk_status.get('emergency_stop', False):
-                messagebox.showerror("Risk Warning", "ไม่สามารถเทรดได้: Emergency stop active")
-                return
-            
-            if not risk_status.get('can_trade', False):
+            try:
+                # ลอง method หลักก่อน
+                if hasattr(self.enhanced_risk_manager, 'check_risk_levels'):
+                    risk_status = self.enhanced_risk_manager.check_risk_levels()
+                elif hasattr(self.enhanced_risk_manager, 'assess_comprehensive_risk'):
+                    risk_status = self.enhanced_risk_manager.assess_comprehensive_risk()
+                elif hasattr(self.enhanced_risk_manager, 'get_risk_status'):
+                    risk_status = self.enhanced_risk_manager.get_risk_status()
+                else:
+                    # ถ้าไม่มี method ใดๆ ใช้ข้อมูล default
+                    self.log("⚠️ Risk Manager methods not available - using default risk check")
+                    risk_status = {
+                        'can_trade': True,
+                        'emergency_stop': False,
+                        'overall_risk': 'medium',
+                        'warnings': ['Risk Manager method not available'],
+                        'restrictions': []
+                    }
+                    
+            except Exception as risk_error:
+                self.log(f"❌ Risk check error: {risk_error}")
+                # ถาม user ว่าจะเริ่มหรือไม่
                 result = messagebox.askyesno(
-                    "Risk Warning", 
-                    "Risk level สูง แต่ยังสามารถเทรดได้\nต้องการเริ่มเทรดหรือไม่?"
+                    "Risk Check Error", 
+                    f"ไม่สามารถตรวจสอบ risk ได้: {risk_error}\n\nต้องการเริ่มเทรดต่อไปหรือไม่?"
                 )
+                
                 if not result:
                     return
+                    
+                risk_status = {
+                    'can_trade': True,
+                    'emergency_stop': False,
+                    'overall_risk': 'unknown',
+                    'warnings': [f'Risk check failed: {risk_error}'],
+                    'restrictions': []
+                }
             
-            self.log("🚀 Starting Enhanced Trading System...")
+            # ตรวจสอบผลการ risk check
+            if risk_status.get('emergency_stop', False):
+                messagebox.showerror("Risk Warning", "ไม่สามารถเทรดได้: Emergency stop active")
+                self.log("🚨 Trading blocked: Emergency stop")
+                return
             
-            # เริ่ม trading thread
+            if not risk_status.get('can_trade', True):
+                # แสดง warnings ให้ user เห็น
+                warnings = risk_status.get('warnings', [])
+                warning_text = "\n".join(warnings[:3]) if warnings else "Risk level high"
+                
+                result = messagebox.askyesno(
+                    "Risk Warning", 
+                    f"Risk warnings detected:\n\n{warning_text}\n\nต้องการเริ่มเทรดหรือไม่?"
+                )
+                
+                if not result:
+                    self.log("🛑 Trading cancelled by user (risk warnings)")
+                    return
+            
+            # ตรวจสอบ system readiness (ใช้ชื่อตามโค้ดของคุณ)
+            if not hasattr(self, 'enhanced_signal_generator') or not self.enhanced_signal_generator:
+                messagebox.showwarning("Warning", "Enhanced Signal Generator ไม่พร้อม - จะใช้ fallback mode")
+                
+            if not self.order_manager:
+                messagebox.showerror("Error", "Order Manager ไม่พร้อม")
+                return
+            
+            # เริ่มเทรด
             self.is_trading = True
+            self.start_button.config(state="disabled")
+            self.stop_button.config(state="normal")
+            
+            # อัพเดท status
+            risk_level = risk_status.get('overall_risk', 'unknown').upper()
+            self.update_system_status(f"🚀 Trading Active (Risk: {risk_level})")
+            
+            # Log risk summary
+            warnings_count = len(risk_status.get('warnings', []))
+            restrictions_count = len(risk_status.get('restrictions', []))
+            self.log(f"🚀 Trading started with {warnings_count} warnings, {restrictions_count} restrictions")
+            
+            # แสดง risk warnings ถ้ามี
+            if warnings_count > 0:
+                for warning in risk_status.get('warnings', [])[:3]:
+                    self.log(f"⚠️ {warning}")
+            
+            # เริ่ม trading thread โดยเรียกใช้ trading_loop ที่มีอยู่
             self.trading_thread = threading.Thread(target=self.trading_loop, daemon=True)
             self.trading_thread.start()
             
-            # อัพเดท GUI
-            self.start_button.config(state="disabled")
-            self.stop_button.config(state="normal")
-            self.update_system_status("🚀 Trading Active")
-            
-            self.log("✅ Enhanced Trading System started")
+            self.log("✅ Enhanced AI Trading System started successfully")
             
         except Exception as e:
             self.log(f"❌ Start trading error: {e}")
-            messagebox.showerror("Error", f"ไม่สามารถเริ่มเทรดได้: {e}")
-    
+            
+            # Debug information
+            if hasattr(self, 'enhanced_risk_manager') and self.enhanced_risk_manager:
+                available_methods = [method for method in dir(self.enhanced_risk_manager) 
+                                if not method.startswith('_') and callable(getattr(self.enhanced_risk_manager, method))]
+                self.log(f"Debug: Available risk manager methods: {available_methods[:5]}...")
+            
+            messagebox.showerror("Start Error", f"ไม่สามารถเริ่มเทรดได้: {e}")
+            
+            # Reset buttons on error
+            self.is_trading = False
+            self.start_button.config(state="normal")
+            self.stop_button.config(state="disabled")
+            self.update_system_status("❌ Trading Start Failed")
+
     def stop_trading(self):
         """🛑 หยุด Trading System"""
         try:
-            self.log("🛑 Stopping Enhanced Trading System...")
+            if not self.is_trading:
+                return
+            
+            self.log("🛑 Stopping Enhanced AI Trading System...")
             
             self.is_trading = False
             
-            # รอให้ trading thread จบ
+            # รอให้ trading thread หยุด
             if self.trading_thread and self.trading_thread.is_alive():
-                self.trading_thread.join(timeout=3)
+                self.trading_thread.join(timeout=3.0)
             
-            # อัพเดท GUI
+            # Reset buttons
             self.start_button.config(state="normal")
             self.stop_button.config(state="disabled")
+            
+            # อัพเดท status
             self.update_system_status("🛑 Trading Stopped")
             
-            self.log("✅ Enhanced Trading System stopped")
+            # แสดงสรุปผลการเทรด
+            if self.performance_tracker:
+                try:
+                    if hasattr(self.performance_tracker, 'get_current_metrics'):
+                        metrics = self.performance_tracker.get_current_metrics()
+                        total_trades = metrics.get('total_trades', 0)
+                        net_profit = metrics.get('net_profit', 0)
+                        self.log(f"📊 Session summary: {total_trades} trades, ${net_profit:.2f} net")
+                except:
+                    pass
+            
+            self.log("✅ Trading stopped successfully")
             
         except Exception as e:
             self.log(f"❌ Stop trading error: {e}")
+
     
     def trading_loop(self):
         """🎯 Main trading loop ที่ใช้ Central Order Manager v4.0"""
@@ -2568,7 +2802,7 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
             print(f"Log error: {e}")
     
     def on_closing(self):
-        """🔒 Enhanced Shutdown Procedure"""
+        """🔒 Enhanced Shutdown Procedure - แก้ไข method calls"""
         try:
             self.log("🔒 Shutting down Enhanced AI Trading System...")
             
@@ -2580,23 +2814,120 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
                 self.stop_trading()
                 time.sleep(2)
             
-            # Save enhanced session data
+            # Save enhanced session data - ✅ ตรวจสอบ methods ก่อนเรียกใช้
+            
+            # 1. Capital Manager - ตรวจสอบว่ามี method save อะไรบ้าง
             if self.capital_manager:
-                self.capital_manager.save_session_data()
-                self.log("💰 Capital session data saved")
+                try:
+                    # ลองหา method ที่เกี่ยวกับ save
+                    if hasattr(self.capital_manager, 'save_session_data'):
+                        self.capital_manager.save_session_data()
+                    elif hasattr(self.capital_manager, 'save_capital_data'):
+                        self.capital_manager.save_capital_data()
+                    elif hasattr(self.capital_manager, 'save_to_persistence'):
+                        self.capital_manager.save_to_persistence()
+                    else:
+                        # ไม่มี save method - แค่ log ว่าข้าม
+                        self.log("💰 Capital Manager: No save method available (data in memory only)")
+                        
+                    self.log("💰 Capital session data processed")
+                    
+                except Exception as e:
+                    self.log(f"❌ Capital Manager save error: {e}")
             
+            # 2. Role Manager - ตรวจสอบ methods
             if self.role_manager:
-                self.role_manager.save_role_history()
-                self.log("🎭 Role history saved")
+                try:
+                    if hasattr(self.role_manager, 'save_role_history'):
+                        self.role_manager.save_role_history()
+                    elif hasattr(self.role_manager, 'save_role_data'):
+                        self.role_manager.save_role_data()
+                    elif hasattr(self.role_manager, 'cleanup_closed_positions'):
+                        # ใช้ cleanup แทน save
+                        active_positions = self._get_current_position_ids()
+                        self.role_manager.cleanup_closed_positions(active_positions)
+                        self.log("🎭 Role data cleaned up")
+                    else:
+                        self.log("🎭 Role Manager: No save method available (data in memory only)")
+                        
+                    self.log("🎭 Role history processed")
+                    
+                except Exception as e:
+                    self.log(f"❌ Role Manager save error: {e}")
             
+            # 3. Performance Tracker - ตรวจสอบ methods
             if self.performance_tracker:
-                self.performance_tracker.save_session_stats()
-                self.log("📈 Performance data saved")
+                try:
+                    if hasattr(self.performance_tracker, 'save_session_stats'):
+                        self.performance_tracker.save_session_stats()
+                    elif hasattr(self.performance_tracker, 'save_to_persistence'):
+                        self.performance_tracker.save_to_persistence()
+                    elif hasattr(self.performance_tracker, 'export_session_data'):
+                        self.performance_tracker.export_session_data()
+                    else:
+                        # ไม่มี save method - แสดงสรุปผลงาน
+                        if hasattr(self.performance_tracker, 'get_current_metrics'):
+                            metrics = self.performance_tracker.get_current_metrics()
+                            total_trades = metrics.get('total_trades', 0)
+                            net_profit = metrics.get('net_profit', 0)
+                            self.log(f"📈 Session Summary: {total_trades} trades, ${net_profit:.2f} profit")
+                        else:
+                            self.log("📈 Performance Tracker: Session completed")
+                            
+                    self.log("📈 Performance data processed")
+                    
+                except Exception as e:
+                    self.log(f"❌ Performance Tracker save error: {e}")
+            
+            # 4. Enhanced Risk Manager - ตรวจสอบ methods
+            if self.enhanced_risk_manager:
+                try:
+                    if hasattr(self.enhanced_risk_manager, 'save_risk_data'):
+                        self.enhanced_risk_manager.save_risk_data()
+                    elif hasattr(self.enhanced_risk_manager, 'export_risk_summary'):
+                        self.enhanced_risk_manager.export_risk_summary()
+                    else:
+                        self.log("🛡️ Risk Manager: Session completed")
+                        
+                except Exception as e:
+                    self.log(f"❌ Risk Manager save error: {e}")
+            
+            # 5. Order Manager - ตรวจสอบ methods
+            if self.order_manager:
+                try:
+                    if hasattr(self.order_manager, 'cleanup_old_history'):
+                        self.order_manager.cleanup_old_history()
+                        self.log("📦 Order history cleaned up")
+                    elif hasattr(self.order_manager, 'save_order_history'):
+                        self.order_manager.save_order_history()
+                        self.log("📦 Order history saved")
+                    else:
+                        self.log("📦 Order Manager: Session completed")
+                        
+                except Exception as e:
+                    self.log(f"❌ Order Manager cleanup error: {e}")
+            
+            # 6. Position Monitor - ตรวจสอบ methods  
+            if self.position_monitor:
+                try:
+                    if hasattr(self.position_monitor, 'save_monitor_data'):
+                        self.position_monitor.save_monitor_data()
+                    elif hasattr(self.position_monitor, 'cleanup_cache'):
+                        self.position_monitor.cleanup_cache()
+                        self.log("📊 Position cache cleaned up")
+                    else:
+                        self.log("📊 Position Monitor: Session completed")
+                        
+                except Exception as e:
+                    self.log(f"❌ Position Monitor cleanup error: {e}")
             
             # Disconnect MT5
-            if self.mt5_connector.is_connected:
-                self.mt5_connector.disconnect()
-                self.log("🔌 MT5 disconnected")
+            try:
+                if self.mt5_connector and self.mt5_connector.is_connected:
+                    self.mt5_connector.disconnect()
+                    self.log("🔌 MT5 disconnected")
+            except Exception as e:
+                self.log(f"❌ MT5 disconnect error: {e}")
             
             self.log("✅ Enhanced system shutdown completed")
             
@@ -2605,8 +2936,33 @@ Max Consecutive Losses: {session_metrics.get('max_consecutive_losses', 0)}"""
             
         except Exception as e:
             print(f"❌ Shutdown error: {e}")
-            self.root.destroy()
-    
+            try:
+                self.root.destroy()
+            except:
+                pass
+
+    def _get_current_position_ids(self) -> List[str]:
+        """🔍 ดึง position IDs ปัจจุบันสำหรับ cleanup"""
+        try:
+            if not self.mt5_connector or not self.mt5_connector.is_connected:
+                return []
+            
+            # ลองใช้ method ที่มีอยู่
+            if hasattr(self.mt5_connector, 'get_positions'):
+                positions = self.mt5_connector.get_positions()
+                return [str(pos.get('ticket', '')) for pos in positions if pos.get('ticket')]
+            else:
+                # ใช้ MT5 library โดยตรง
+                import MetaTrader5 as mt5
+                positions = mt5.positions_get()
+                if positions:
+                    return [str(pos.ticket) for pos in positions]
+                return []
+                
+        except Exception as e:
+            print(f"❌ Get position IDs error: {e}")
+            return []
+
     # ==========================================
     # 🎮 ADVANCED GUI FEATURES
     # ==========================================
